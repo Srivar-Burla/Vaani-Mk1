@@ -1,0 +1,8 @@
+sarvamai
+sounddevice
+soundfile
+numpy
+python-dotenv
+google-genai
+onnxruntime
+openwakeword
