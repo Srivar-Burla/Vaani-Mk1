@@ -40,7 +40,7 @@ As AI-native product development becomes the norm, I wanted to close the gap bet
 
 ### Mk1 — Core Conversation Loop (current)
 - [x] Sarvam STT working across Hindi, Telugu, Kannada
-- [ ] Gemini integration as reasoning layer
+- [x] Gemini integration as reasoning layer
 - [ ] Sarvam TTS speaks response back to user
 - [ ] Full conversation turn: voice in → voice out
 - [ ] TWS gesture invocation
@@ -49,3 +49,5 @@ As AI-native product development becomes the norm, I wanted to close the gap bet
 ### Mk2 — Considered but deferred
 - Wake word detection (needs hardware-level battery optimisation to be viable)
 - Bhasha translate mode (needs further thought on mic pickup of opposite party in real environments)
+- Web search grounding (P0 for Mk2: without live information access, hallucination risk on factual queries is high; grounded responses can also cite sources)
+- Persistent memory across sessions (Vaani takes notes on tasks, people, and personal context, and can refer to them in future conversations)
