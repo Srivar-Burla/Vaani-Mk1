@@ -11,7 +11,7 @@ A voice assistant built on Sarvam AI's language stack (STT, translation, and TTS
 - Audio I/O: sounddevice + soundfile
 
 ## Status
-Work in progress. STT working and tested across Indian languages. LLM reasoning works (tested in English); conversation tested end to end in text
+Work in progress. Full multilingual conversation loop working: voice in, voice out, with automatic translation for non-English queries. Tested in English, Hindi, and Telugu
 
 ## Setup
 1. Clone the repo

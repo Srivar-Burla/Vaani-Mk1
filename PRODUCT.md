@@ -41,7 +41,8 @@ As AI-native product development becomes the norm, I wanted to close the gap bet
 ### Mk1 — Core Conversation Loop (current)
 - [x] Sarvam STT working across Hindi, Telugu, Kannada
 - [x] Gemini integration as reasoning layer
-- [ ] Sarvam TTS speaks response back to user
+- [x] Sarvam TTS speaks response back to user
+- [x] Single Query: voice in → voice out
 - [ ] Full conversation turn: voice in → voice out
 - [ ] TWS gesture invocation
 - [ ] Silence detection to end user turn dynamically
