@@ -12,10 +12,15 @@ import base64
 load_dotenv()
 
 SAMPLE_RATE = 16000
-DURATION = 5
+#DURATION = 10
+CHUNK_DURATION = 0.1
+SILENCE_THRESHOLD = 0.005
+SILENCE_CHUNKS = 20
+EXIT_PHRASES = ["goodbye", "bye", "stop" , "that's all for now"]
+#EXIT_PHRASES = ["bye"]
 
 
-SYSTEM_PROMPT = """You are Vaani, a voice assistant. 
+SYSTEM_PROMPT = """You are Vaani, a voice assistant. "
 
 You are talking to your user through earphones. They are often walking, commuting, or doing something with their hands while talking to you.
 
@@ -29,7 +34,7 @@ Never use bullet points, numbered lists, headings, or any markdown formatting. U
 
 For longer explanations, structure your response sequentially and break it at natural boundaries, like after completing one concept and before starting the next. At these points, check in with the user before continuing. Vary how you ask: "should I go on?", "are you following me so far?", "any questions before I continue?". Never break midway through a single idea or thought, as this disrupts the user's understanding.
 
-Avoid abbreviations and acronyms that sound wrong when spoken. Say "as soon as possible" not ASAP. If an acronym is widely spoken aloud, like API or UPI, it is fine to use.
+Avoid abbreviations and acronyms that sound wrong when spoken. Say "as soon as possible" not ASAP. If an acronym is widely spoken aloud, like API or UPI, it is fine to use. Spell out alphanumeric codes and identifiers the way a person would say them aloud. For example, write "National Highway forty four" not "NH44", and "highway sixty six" not "NH66". Expand any short form that a listener would otherwise hear as a jumble of letters and numbers.
 
 Be decisive. Give a clear answer first, then offer to elaborate. Do not front-load your uncertainty with hedges.
 
@@ -39,7 +44,7 @@ If a question can be reasonably answered with an assumption, make the assumption
 
 If you do not know something or are not confident, say "I don't know" plainly. Do not guess or make things up. You do not have access to live information from the internet, so for questions about current events, prices, or anything recent, say you don't have live information on that.
 
-Numbers, dates, and currency should be spoken naturally. Say "three thirty in the afternoon" not "15:30". Say "twenty five thousand rupees" not "Rs. 25,000"."""
+Numbers, dates, and currency should be spoken naturally. Say "three thirty in the afternoon" not "15:30". Say "twenty five thousand rupees" not "Rs. 25,000". """
 
 
 sarvam = SarvamAI(api_subscription_key=os.getenv("SARVAM_API_KEY"))
@@ -56,86 +61,107 @@ def get_llm_response(chat_session, user_text):
     response = chat_session.send_message(user_text)
     return response.text
 
-print("Recording for 5 seconds... speak a sentence!")
-audio = sd.rec(
-    int(DURATION * SAMPLE_RATE),
-    samplerate=SAMPLE_RATE,
-    channels=1,
-    dtype='float32'
-)
-sd.wait()
-print("Done recording. Sending to Sarvam STT...")
+def record_until_silence():
+    has_spoken = False
+    silence_counter = 0
+    collection = []
 
-# Save to temp WAV file
-tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
-sf.write(tmp.name, audio, SAMPLE_RATE)
-tmp.close()
+    with sd.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype='float32') as stream:
+        while silence_counter <= SILENCE_CHUNKS:
+            chunk, _ = stream.read(int(CHUNK_DURATION * SAMPLE_RATE))
+            collection.append(chunk)
 
-# Send to Sarvam
-with open(tmp.name, "rb") as f:
-    user_query = sarvam.speech_to_text.transcribe(
-        file=("audio.wav", f, "audio/wav"),
-        model="saarika:v2.5",
-        language_code="unknown",
+            volume = np.abs(chunk).mean()
+
+            if volume > SILENCE_THRESHOLD:
+                has_spoken = True
+                silence_counter = 0          # speech resets the counter
+            elif has_spoken:
+                silence_counter += 1          # only count silence after speech starts
+
+        audio = np.concatenate(collection, axis=0)
+        return audio
+
+def vaani_output(output, user_lang_code):
+    if user_lang_code != "en-IN":
+        print("Vaani (in English):", output)
+        translation = sarvam.text.translate(
+            input=output,
+            source_language_code="en-IN",
+            target_language_code=user_query.language_code
+        )
+        vaani_reply = translation.translated_text
+    else:
+        vaani_reply = output
+
+    print("Vaani:", vaani_reply)
+
+    # Vaani speaks
+    tts_response = sarvam.text_to_speech.convert(
+        text=vaani_reply,
+        model="bulbul:v2",
+        target_language_code=user_lang_code,
+        speaker="anushka"
     )
+    
+    for segment in tts_response.audios:
+        audio_bytes = base64.b64decode(segment)
 
-os.unlink(tmp.name)
+        tts_file = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+        tts_file.write(audio_bytes)
+        tts_file.close()
+        
+        speech, rate = sf.read(tts_file.name)
+        sd.play(speech, rate)
+        sd.wait()
+        
+        os.unlink(tts_file.name)
+        
+print("Vaani is ready. Start Speaking. To end conversation, say 'goodbye', 'bye', 'stop' or 'that's all for now'")
 
-print("User:", user_query.transcript)
-print("User spoke in ", user_query.language_code)
+while True:
+    print("Listening....")
+    audio = record_until_silence()
+    print("Done recording. Sending to Sarvam STT...")
 
-# Translate to English before Gemini if user spoke another language
-if user_query.language_code != "en-IN":
-    print("Detected Language is not English. Translating User query to English for improved reasoning")
-    translation = sarvam.text.translate(
-        input=user_query.transcript,
-        source_language_code=user_query.language_code,
-        target_language_code="en-IN"
-    )
-    gemini_input = translation.translated_text
-    print("User (in English): ", gemini_input)
-else:
-    gemini_input = user_query.transcript
+    # Save to temp WAV file
+    tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+    sf.write(tmp.name, audio, SAMPLE_RATE)
+    tmp.close()
 
-print("Vaani is thinking.....")
-llm_response = get_llm_response(chat_session, gemini_input)
+    # Send to Sarvam
+    with open(tmp.name, "rb") as f:
+        user_query = sarvam.speech_to_text.transcribe(
+            file=("audio.wav", f, "audio/wav"),
+            model="saarika:v2.5",
+            language_code="unknown"
+        )
 
-# Translate Gemini's English response back to the user's language
-if user_query.language_code != "en-IN":
-    print("Vaani (in English):", llm_response)
-    translation = sarvam.text.translate(
-        input=llm_response,
-        source_language_code="en-IN",
-        target_language_code=user_query.language_code
-    )
-    vaani_reply = translation.translated_text
-else:
-    vaani_reply = llm_response
+    os.unlink(tmp.name)
 
-print("Vaani:", vaani_reply)
+    print("User:", user_query.transcript)
+    print("User spoke in ", user_query.language_code)
 
-# Vaani speaks
-tts_response = sarvam.text_to_speech.convert(
-    text=vaani_reply,
-    model="bulbul:v2",
-    target_language_code=user_query.language_code,
-    speaker="anushka"
-)
+    # Translate to English before Gemini if user spoke another language
+    if user_query.language_code != "en-IN":
+        print("Detected Language is not English. Translating User query to English for improved reasoning")
+        translation = sarvam.text.translate(
+            input=user_query.transcript,
+            source_language_code=user_query.language_code,
+            target_language_code="en-IN"
+        )
+        gemini_input = translation.translated_text
+        print("User (in English): ", gemini_input)
+    else:
+        gemini_input = user_query.transcript
 
-audio_bytes = base64.b64decode(tts_response.audios[0])
+    if any(phrase in gemini_input.lower() for phrase in EXIT_PHRASES):
+        break
+    else:
+        print("Vaani is thinking.....")
+        llm_response = get_llm_response(chat_session, gemini_input)
 
-tts_file = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
-tts_file.write(audio_bytes)
-tts_file.close()
+        vaani_output(llm_response, user_query.language_code)
 
-speech, rate = sf.read(tts_file.name)
-sd.play(speech, rate)
-sd.wait()
-
-os.unlink(tts_file.name)
-
-#print("Transcript:", response.transcript)
-#print("Transcript:", response)
-#print("User:", user_query.transcript)
-#print("User spoke in:", user_query.language_code)
-#print("Vaani: ", vaani_reply)
+exit_output = "Bye! I'm always here whenever you need me" 
+vaani_output(exit_output, user_query.language_code)        

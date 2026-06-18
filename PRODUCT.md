@@ -43,12 +43,23 @@ As AI-native product development becomes the norm, I wanted to close the gap bet
 - [x] Gemini integration as reasoning layer
 - [x] Sarvam TTS speaks response back to user
 - [x] Single Query: voice in → voice out
-- [ ] Full conversation turn: voice in → voice out
+- [x] Silence detection to end user turn dynamically intead of fixed duration input
+- [x] Full conversation turn: voice in → voice out
+- [ ] Error handling for API failures (spoken, not crashed)
 - [ ] TWS gesture invocation
 - [ ] Silence detection to end user turn dynamically
 
 ### Mk2 — Considered but deferred
 - Wake word detection (needs hardware-level battery optimisation to be viable)
+
 - Bhasha translate mode (needs further thought on mic pickup of opposite party in real environments)
+
 - Web search grounding (P0 for Mk2: without live information access, hallucination risk on factual queries is high; grounded responses can also cite sources)
+
 - Persistent memory across sessions (Vaani takes notes on tasks, people, and personal context, and can refer to them in future conversations)
+
+- Adaptive noise-floor threshold for silence detection (Mk1 uses a fixed threshold calibrated in a quiet environment; a robust version would continuously sample ambient noise and set the speech threshold relative to it, so detection holds up in noisy real-world settings like streets or cafes)
+
+- TTS English pronunciation quality (confirmed model-level limitation in Bulbul across all speakers; English text from Latin script is mispronounced, including romanized Indian place names, and English is expected to be the dominant usage language; fix is to route the English path to a second provider with strong Indian-English voices, e.g. Google Cloud TTS or Azure, behind a provider-agnostic speak() function while keeping Sarvam for Indic languages; architecture designed, deferred due to cloud billing setup friction)
+
+- Text normalization pass between the LLM and TTS (deterministically expand alphanumeric codes, identifiers, and abbreviations so pronunciation does not depend on prompt instructions holding; currently handled by a system prompt rule that will not scale to every pattern)
