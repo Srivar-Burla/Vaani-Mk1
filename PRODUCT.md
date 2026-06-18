@@ -2,7 +2,7 @@
 
 ## Why I Built This - the Origin
 
-I've wondered about questions that came to my mind while walking or working on something hands-on, phone in pocket, earphones on. Stopping what I was doing, pulling out my phone, opening an app and typing my query out felt like too much of a hassle and the curiosity just faded. I wanted to just ask, out loud, and get an answer.
+I've had questions that came to my mind while walking or working on something hands-on, phone in pocket, earphones on. Stopping what I was doing, pulling out my phone, opening an app and typing my query out felt like too much of a hassle and the curiosity just faded. I wanted to just ask, out loud, and get an answer.
 
 As AI-native product development becomes the norm, I wanted to close the gap between understanding how APIs work conceptually and actually wiring them together, hitting the edges where things break, making deliberate tradeoffs, and shipping something real. Also, Building the solution yourself is more interesting than waiting for someone else to.
 
