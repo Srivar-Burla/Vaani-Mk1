@@ -6,3 +6,6 @@ python-dotenv
 google-genai
 onnxruntime
 openwakeword
+winrt-Windows.Media
+winrt-Windows.Media.Control
+winrt-Windows.Media.Playback

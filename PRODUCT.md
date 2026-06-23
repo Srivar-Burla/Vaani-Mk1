@@ -53,7 +53,8 @@ For a voice assistant that needs to feel seamless to an Indian user speaking in 
 - [x] Conditional web grounding (Gemini decides per turn when to search the live web)
 - [x] Transaction recording: voice command to structured fields to a real POST against the finance tracker API
 - [x] Session logging: every interaction and traceback captured to a per-session log file
-- [ ] TWS gesture invocation
+- [x] Desktop UI with assistant state, multilingual transcript, and Start Listening fallback
+- [x] TWS Play/Pause gesture invocation through Windows media controls
 - [ ] Silence detection to end conversation
 
 ## Where Vaani Is Headed

@@ -1,6 +1,0 @@
-Need to add Multiple reasoning functions for major LLMs in Mk2 scope
-
-Need to add as USP - Vaani Handles mid conversation language changes elegantly
-
-Need to explain what envisioned features like BASHA actually do
-

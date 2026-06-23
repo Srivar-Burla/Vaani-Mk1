@@ -27,14 +27,10 @@ class Tee:
             s.write(data)
     def flush(self):
         for s in self.streams:
-            s.flush()
-
-os.makedirs("logs", exist_ok=True)
-_session_ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-_log_file = open(os.path.join("logs", f"vaani_{_session_ts}.log"), "w", encoding="utf-8")
-sys.stdout = Tee(sys.__stdout__, _log_file)
-sys.stderr = Tee(sys.__stderr__, _log_file)
-atexit.register(_log_file.close)
+            try:
+                s.flush()
+            except Exception:
+                pass
 
 SAMPLE_RATE = 16000
 #DURATION = 10
@@ -44,7 +40,7 @@ SILENCE_CHUNKS = 20
 EXIT_PHRASES = ["goodbye", "bye", "stop" , "that's all for now"]
 #EXIT_PHRASES = ["bye"]
 
-TRANSACTION_TRIGGER_PHRASES = ["log a transaction", "record a transaction", "add an expense", "log expense", "record expense"]
+TRANSACTION_TRIGGER_PHRASES = ["log a transaction", "record a transaction", "add an expense", "log expense", "record expense", "save a transaction", "add a transaction", "record a payment", "log a payment"]
 
 # Base URL for the personal finance tracker API (set in .env as FINANCE_API_URL)
 FINANCE_API_URL = os.getenv("FINANCE_API_URL")
@@ -82,15 +78,18 @@ sarvam = SarvamAI(api_subscription_key=os.getenv("SARVAM_API_KEY"))
 # llm_client: currently Gemini. Kept generic so swapping providers later
 # (Claude, open source models) doesn't require renaming this throughout the file.
 llm_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-chat_session = llm_client.chats.create(
-    model="gemini-3.1-flash-lite",
-    config=types.GenerateContentConfig(
-        system_instruction=SYSTEM_PROMPT,
-        # google_search: Gemini decides per turn whether to call it (on-demand grounding).
-        # No forced search — timeless questions go straight to the model's knowledge.
-        tools=[types.Tool(google_search=types.GoogleSearch())]
+# Factory used by both terminal (main.py __main__) and GUI (ui.py) to create
+# a fresh session per conversation run.
+def create_chat_session():
+    return llm_client.chats.create(
+        model="gemini-3.1-flash-lite",
+        config=types.GenerateContentConfig(
+            system_instruction=SYSTEM_PROMPT,
+            # google_search: Gemini decides per turn whether to call it (on-demand grounding).
+            # No forced search — timeless questions go straight to the model's knowledge.
+            tools=[types.Tool(google_search=types.GoogleSearch())]
+        )
     )
-)
 
 def get_llm_response(chat_session, user_text):
     response = chat_session.send_message(user_text)
@@ -117,7 +116,11 @@ def record_until_silence():
         audio = np.concatenate(collection, axis=0)
         return audio
 
-def vaani_output(output, user_lang_code):
+def vaani_output(output, user_lang_code, ui_queue=None):
+    # Signal the UI that Vaani is about to speak, before any processing
+    if ui_queue is not None:
+        ui_queue.put({"type": "state", "value": "Speaking"})
+
     if user_lang_code != "en-IN":
         print("Vaani (in English):", output)
         translation = sarvam.text.translate(
@@ -130,6 +133,14 @@ def vaani_output(output, user_lang_code):
         vaani_reply = output
 
     print("Vaani:", vaani_reply)
+
+    # Push transcript: English source + translated reply (translated is None if already English)
+    if ui_queue is not None:
+        ui_queue.put({
+            "type": "transcript", "speaker": "Vaani",
+            "text": output,
+            "translated": vaani_reply if user_lang_code != "en-IN" else None
+        })
 
     # Vaani speaks
     tts_response = sarvam.text_to_speech.convert(
@@ -152,7 +163,7 @@ def vaani_output(output, user_lang_code):
         
         os.unlink(tts_file.name)
 
-def speak_error(exception, user_lang_code):
+def speak_error(exception, user_lang_code, ui_queue=None):
     # Prints the full traceback to the terminal first so you can see the exact error,
     # then speaks a natural exit message in the user's language via vaani_output.
     # Falls back to a print if TTS itself also fails.
@@ -164,12 +175,18 @@ def speak_error(exception, user_lang_code):
     # Gemini 429 / RESOURCE_EXHAUSTED — hard quota limits (RPM, TPM, or RPD)
     if "429" in error_text or "resource_exhausted" in error_text or "resourceexhausted" in error_text:
         if "requestsperday" in error_text or "daily" in error_text:
-            # Daily quota exhausted — user cannot continue until tomorrow
+            # Daily request quota exhausted — resets at midnight Pacific
             message = ("I apologize, but we've completely maxed out our daily quota. "
                        "I'm locked out for the rest of the day — I'll be fully refreshed "
                        "and ready to help you tomorrow morning. Signing off for now.")
+        elif "billing" in error_text or "plan and billing" in error_text:
+            # Token or project-level quota — Google surfaces this as a billing/plan message.
+            # Usually TPM (tokens per minute); recoverable after ~60 seconds.
+            message = ("I've hit a token limit on the AI side — I processed too much text too quickly. "
+                       "I'm going to stop here. Please restart me in about sixty seconds, "
+                       "and if it keeps happening, check your API quota in Google AI Studio.")
         else:
-            # Minute-based RPM or TPM limit — recoverable, but ending the session
+            # Minute-based RPM limit — recoverable, but ending the session
             message = ("I've hit my processing limit for this minute. "
                        "I'm going to have to stop here — please restart me in about sixty seconds.")
 
@@ -193,7 +210,7 @@ def speak_error(exception, user_lang_code):
 
     try:
         # Speak the exit message in the user's language via the normal TTS pipeline
-        vaani_output(message, user_lang_code)
+        vaani_output(message, user_lang_code, ui_queue)
     except Exception as tts_err:
         # If TTS itself fails, just log — we're already exiting
         print(f"[speak_error] Could not speak error message: {tts_err}")
@@ -235,6 +252,7 @@ def extract_field_value(field_name, user_answer):
         "amount": f'Extract the numeric amount from: "{user_answer}". Return only the number as a float (e.g. 200.0), nothing else.',
         "category": f'Classify into one of: Food, Travel, Fitness, Entertainment, Shopping, Utilities, Healthcare, Others. Text: "{user_answer}". Return only the category word.',
         "payment_medium": f'Identify the payment method from: "{user_answer}". Return only one of: UPI, Cash, Credit Card, Wallet, Others.',
+        "payment_mode": f'Identify the Payment Mode from:"{user_answer}". Return only one of ICICI, Jupiter, Slice, Amazon Pay, Mobiquick, Splitwise Debt'
     }
     response = llm_client.models.generate_content(
         model="gemini-3.1-flash-lite",
@@ -253,26 +271,33 @@ def post_transaction(fields):
     response.raise_for_status()
     return True
 
-def record_transaction(user_lang_code):
+def record_transaction(user_lang_code, ui_queue=None):
     # Full transaction recording flow — triggered when user says a trigger phrase.
     # Steps: prompt → describe → extract fields → fill gaps → confirm → POST or cancel.
     # Any exception is caught here and spoken as an inline error so Vaani returns
     # to listening rather than exiting the whole conversation.
+    # ui_queue: passed through to vaani_output so the UI stays in sync with sub-states.
 
-    REQUIRED_FIELDS = ["name", "amount", "category", "payment_medium"]
+    REQUIRED_FIELDS = ["name", "amount", "category", "payment_medium", "payment_mode"]
     FIELD_QUESTIONS = {
         "name": "What's the merchant or transaction name?",
         "amount": "How much did you spend?",
         "category": "Which category should I file this under — Food, Travel, Fitness, Shopping, or something else?",
         "payment_medium": "How did you pay — UPI, cash, credit card, or wallet?",
+        "payment_mode": "Which Account did you pay from?"
     }
     YES_PHRASES = ["yes", "yeah", "sure", "okay", "ok", "correct", "right", "go ahead", "save", "do it"]
 
+    def push(msg):
+        if ui_queue is not None:
+            ui_queue.put(msg)
+
     try:
         # Step 1: ask user to describe the transaction
-        vaani_output("Sure, go ahead and describe the transaction.", user_lang_code)
+        vaani_output("Sure, go ahead and describe the transaction.", user_lang_code, ui_queue)
 
         # Step 2: record, transcribe, and translate the description
+        push({"type": "state", "value": "Listening"})
         audio = record_until_silence()
         tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
         try:
@@ -300,14 +325,16 @@ def record_transaction(user_lang_code):
             print("Translated:", desc_text)
 
         # Step 3: extract all fields Gemini can find in one shot
+        push({"type": "state", "value": "Thinking"})
         fields = extract_transaction_fields(desc_text)
         print("Extracted fields:", fields)
 
         # Step 4: ask for each required field that came back as None
         for field in REQUIRED_FIELDS:
             if not fields.get(field):
-                vaani_output(FIELD_QUESTIONS[field], user_lang_code)
+                vaani_output(FIELD_QUESTIONS[field], user_lang_code, ui_queue)
 
+                push({"type": "state", "value": "Listening"})
                 audio = record_until_silence()
                 tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
                 try:
@@ -352,9 +379,10 @@ def record_transaction(user_lang_code):
             f"under {fields['category']}, paid by {fields['payment_medium']}. "
             f"Shall I save this?"
         )
-        vaani_output(readback, user_lang_code)
+        vaani_output(readback, user_lang_code, ui_queue)
 
         # Record and transcribe the yes/no confirmation
+        push({"type": "state", "value": "Listening"})
         audio = record_until_silence()
         tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
         try:
@@ -394,14 +422,15 @@ def record_transaction(user_lang_code):
             if fields.get("notes"):
                 api_payload["notes"] = fields["notes"]
 
+            push({"type": "state", "value": "Thinking"})
             post_transaction(api_payload)
             vaani_output(
                 f"Done! I've logged {amount_str} rupees at {fields['name']} under {fields['category']}.",
-                user_lang_code
+                user_lang_code, ui_queue
             )
         else:
             # Step 6b: user said no or unclear — cancel safely
-            vaani_output("No problem, I've cancelled that. What else can I help you with?", user_lang_code)
+            vaani_output("No problem, I've cancelled that. What else can I help you with?", user_lang_code, ui_queue)
 
     except Exception as e:
         # Any failure inside the transaction flow — log it and return to listening.
@@ -409,83 +438,120 @@ def record_transaction(user_lang_code):
         # the whole conversation, and a failed transaction log should not do that.
         print(f"[Transaction Error] {type(e).__name__}: {e}")
         try:
-            vaani_output("I ran into a problem while logging that transaction. Let's continue our conversation.", user_lang_code)
+            vaani_output("I ran into a problem while logging that transaction. Let's continue our conversation.", user_lang_code, ui_queue)
         except Exception:
             pass
 
-print("Vaani is ready. Start Speaking. To end conversation, say 'goodbye', 'bye', 'stop' or 'that's all for now'")
+def run_conversation(chat_session, ui_queue=None):
+    # Main conversation loop — runs on the calling thread (background thread in UI mode,
+    # main thread in terminal mode). Pushes state/transcript dicts to ui_queue when provided;
+    # ui_queue=None means terminal mode where all feedback is via print() only.
 
-error_exit = False  # set to True when we exit due to an error rather than a user goodbye
+    def push(msg):
+        if ui_queue is not None:
+            ui_queue.put(msg)
 
-while True:
-    print("Listening....")
-    audio = record_until_silence()
-    print("Done recording. Sending to Sarvam STT...")
+    print("Vaani is ready. Start Speaking. To end conversation, say 'goodbye', 'bye', 'stop' or 'that's all for now'")
 
-    # Save to temp WAV file
-    tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
-    sf.write(tmp.name, audio, SAMPLE_RATE)
-    tmp.close()
+    error_exit = False
+    user_query = None  # kept in scope for the goodbye step after the loop
 
-    # Send to Sarvam
-    with open(tmp.name, "rb") as f:
-        user_query = sarvam.speech_to_text.transcribe(
-            file=("audio.wav", f, "audio/wav"),
-            model="saarika:v2.5",
-            language_code="unknown"
-        )
+    while True:
+        push({"type": "state", "value": "Listening"})
+        print("Listening....")
+        audio = record_until_silence()
+        print("Done recording. Sending to Sarvam STT...")
 
-    os.unlink(tmp.name)
+        # Save to temp WAV file
+        tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+        sf.write(tmp.name, audio, SAMPLE_RATE)
+        tmp.close()
 
-    print("User:", user_query.transcript)
-    print("User spoke in ", user_query.language_code)
-
-    # Translate to English before Gemini if user spoke another language
-    if user_query.language_code != "en-IN":
-        print("Detected Language is not English. Translating User query to English for improved reasoning")
-        try:
-            translation = sarvam.text.translate(
-                input=user_query.transcript,
-                source_language_code=user_query.language_code,
-                target_language_code="en-IN"
+        # Send to Sarvam STT
+        with open(tmp.name, "rb") as f:
+            user_query = sarvam.speech_to_text.transcribe(
+                file=("audio.wav", f, "audio/wav"),
+                model="saarika:v2.5",
+                language_code="unknown"
             )
-            gemini_input = translation.translated_text
-            print("User (in English): ", gemini_input)
-        except Exception as e:
-            # Inbound translation failed — speak error and exit
-            speak_error(e, user_query.language_code)
-            error_exit = True
-            break
-    else:
-        gemini_input = user_query.transcript
 
-    if any(phrase in gemini_input.lower() for phrase in EXIT_PHRASES):
-        break
-    elif any(phrase in gemini_input.lower() for phrase in TRANSACTION_TRIGGER_PHRASES):
-        # Hand off to the transaction recording flow — returns to listening when done
-        record_transaction(user_query.language_code)
-    else:
-        print("Vaani is thinking.....")
+        os.unlink(tmp.name)
+
+        print("User:", user_query.transcript)
+        print("User spoke in ", user_query.language_code)
+
+        # Translate to English before Gemini if user spoke another language
+        if user_query.language_code != "en-IN":
+            print("Detected Language is not English. Translating User query to English for improved reasoning")
+            try:
+                translation = sarvam.text.translate(
+                    input=user_query.transcript,
+                    source_language_code=user_query.language_code,
+                    target_language_code="en-IN"
+                )
+                gemini_input = translation.translated_text
+                print("User (in English): ", gemini_input)
+            except Exception as e:
+                # Inbound translation failed — speak error and exit
+                speak_error(e, user_query.language_code, ui_queue)
+                error_exit = True
+                break
+        else:
+            gemini_input = user_query.transcript
+
+        # Push User transcript: native text always shown; translated text shown only if non-English
+        push({
+            "type": "transcript", "speaker": "User",
+            "text": user_query.transcript,
+            "lang": user_query.language_code,
+            "translated": gemini_input if user_query.language_code != "en-IN" else None
+        })
+
+        if any(phrase in gemini_input.lower() for phrase in EXIT_PHRASES):
+            break
+        elif any(phrase in gemini_input.lower() for phrase in TRANSACTION_TRIGGER_PHRASES):
+            # Hand off to the transaction recording flow — returns to listening when done
+            push({"type": "state", "value": "Thinking"})
+            record_transaction(user_query.language_code, ui_queue)
+        else:
+            push({"type": "state", "value": "Thinking"})
+            print("Vaani is thinking.....")
+            try:
+                # Gemini call — most likely failure point (429, 503, network errors)
+                llm_response = get_llm_response(chat_session, gemini_input)
+            except Exception as e:
+                speak_error(e, user_query.language_code, ui_queue)
+                error_exit = True
+                break
+
+            try:
+                # Speak Vaani's reply — vaani_output pushes Speaking state + transcript
+                vaani_output(llm_response, user_query.language_code, ui_queue)
+            except Exception as e:
+                speak_error(e, user_query.language_code, ui_queue)
+                error_exit = True
+                break
+
+    # Only play the normal goodbye if the user said bye — error exits already spoke their own ending
+    if not error_exit and user_query is not None:
+        exit_output = "Bye! I'm always here whenever you need me"
         try:
-            # Gemini call — most likely failure point (429, 503, network errors)
-            llm_response = get_llm_response(chat_session, gemini_input)
+            vaani_output(exit_output, user_query.language_code, ui_queue)
         except Exception as e:
-            speak_error(e, user_query.language_code)
-            error_exit = True
-            break
+            speak_error(e, user_query.language_code, ui_queue)
 
-        try:
-            # Speak Vaani's reply — can fail at outbound translation or TTS step
-            vaani_output(llm_response, user_query.language_code)
-        except Exception as e:
-            speak_error(e, user_query.language_code)
-            error_exit = True
-            break
+    # Signal the UI (if any) that this session has ended and the Start button can come back
+    push({"type": "state", "value": "Idle"})
 
-# Only play the normal goodbye if the user said bye — error exits already spoke their own ending
-if not error_exit:
-    exit_output = "Bye! I'm always here whenever you need me"
-    try:
-        vaani_output(exit_output, user_query.language_code)
-    except Exception as e:
-        speak_error(e, user_query.language_code)        
+
+if __name__ == "__main__":
+    # Terminal / developer mode: Tee stdout+stderr to a timestamped log file so every
+    # print() and traceback lands in both the terminal and the session log.
+    os.makedirs("logs", exist_ok=True)
+    _session_ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    _log_file = open(os.path.join("logs", f"vaani_{_session_ts}.log"), "w", encoding="utf-8")
+    sys.stdout = Tee(sys.__stdout__, _log_file)
+    sys.stderr = Tee(sys.__stderr__, _log_file)
+    atexit.register(_log_file.close)
+
+    run_conversation(create_chat_session())        
