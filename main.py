@@ -313,6 +313,7 @@ def record_transaction(user_lang_code, ui_queue=None):
             os.unlink(tmp.name)
 
         desc_text = desc_query.transcript
+        user_lang_code = desc_query.language_code  # follow the user's language from here
         print("Transaction description:", desc_text)
 
         if desc_query.language_code != "en-IN":
@@ -350,6 +351,7 @@ def record_transaction(user_lang_code, ui_queue=None):
                     os.unlink(tmp.name)
 
                 ans_text = ans_query.transcript
+                user_lang_code = ans_query.language_code  # re-follow language on each answer
                 if ans_query.language_code != "en-IN":
                     translation = sarvam.text.translate(
                         input=ans_text,
@@ -398,6 +400,7 @@ def record_transaction(user_lang_code, ui_queue=None):
             os.unlink(tmp.name)
 
         conf_text = conf_query.transcript
+        user_lang_code = conf_query.language_code  # re-follow language for confirmation reply
         if conf_query.language_code != "en-IN":
             translation = sarvam.text.translate(
                 input=conf_text,
