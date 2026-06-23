@@ -8,6 +8,7 @@ from google import genai
 from google.genai import types
 from dotenv import load_dotenv
 import base64
+import traceback
 
 load_dotenv()
 
@@ -42,7 +43,7 @@ Never begin a response with disclaimers, caveats, or qualifiers like "it depends
 
 If a question can be reasonably answered with an assumption, make the assumption and state it briefly rather than asking the user for more details. For example, if asked how long a drive takes, assume a car and typical traffic, and say so in passing.
 
-If you do not know something or are not confident, say "I don't know" plainly. Do not guess or make things up. You do not have access to live information from the internet, so for questions about current events, prices, or anything recent, say you don't have live information on that.
+If you do not know something or are not confident, say "I don't know" plainly. Do not guess or make things up. You have access to Google Search and can use it when a question requires live or current information. Use it when needed; don't call it for timeless questions.
 
 Numbers, dates, and currency should be spoken naturally. Say "three thirty in the afternoon" not "15:30". Say "twenty five thousand rupees" not "Rs. 25,000". """
 
@@ -54,7 +55,12 @@ sarvam = SarvamAI(api_subscription_key=os.getenv("SARVAM_API_KEY"))
 llm_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 chat_session = llm_client.chats.create(
     model="gemini-2.5-flash",
-    config=types.GenerateContentConfig(system_instruction = SYSTEM_PROMPT)
+    config=types.GenerateContentConfig(
+        system_instruction=SYSTEM_PROMPT,
+        # google_search: Gemini decides per turn whether to call it (on-demand grounding).
+        # No forced search — timeless questions go straight to the model's knowledge.
+        tools=[types.Tool(google_search=types.GoogleSearch())]
+    )
 )
 
 def get_llm_response(chat_session, user_text):
@@ -88,7 +94,7 @@ def vaani_output(output, user_lang_code):
         translation = sarvam.text.translate(
             input=output,
             source_language_code="en-IN",
-            target_language_code=user_query.language_code
+            target_language_code=user_lang_code
         )
         vaani_reply = translation.translated_text
     else:
@@ -116,8 +122,56 @@ def vaani_output(output, user_lang_code):
         sd.wait()
         
         os.unlink(tts_file.name)
-        
+
+def speak_error(exception, user_lang_code):
+    # Prints the full traceback to the terminal first so you can see the exact error,
+    # then speaks a natural exit message in the user's language via vaani_output.
+    # Falls back to a print if TTS itself also fails.
+    error_text = str(exception).lower()
+
+    # Always print the full stack trace to terminal before Vaani speaks
+    traceback.print_exception(type(exception), exception, exception.__traceback__)
+
+    # Gemini 429 / RESOURCE_EXHAUSTED — hard quota limits (RPM, TPM, or RPD)
+    if "429" in error_text or "resource_exhausted" in error_text or "resourceexhausted" in error_text:
+        if "requestsperday" in error_text or "daily" in error_text:
+            # Daily quota exhausted — user cannot continue until tomorrow
+            message = ("I apologize, but we've completely maxed out our daily quota. "
+                       "I'm locked out for the rest of the day — I'll be fully refreshed "
+                       "and ready to help you tomorrow morning. Signing off for now.")
+        else:
+            # Minute-based RPM or TPM limit — recoverable, but ending the session
+            message = ("I've hit my processing limit for this minute. "
+                       "I'm going to have to stop here — please restart me in about sixty seconds.")
+
+    # Gemini 503 "high demand" — free tier returns this when quota is exhausted
+    # Checked separately from the network block because the cause is quota, not connectivity
+    elif "high demand" in error_text:
+        message = ("I apologize, but I've run into a quota limit and can't take any more questions "
+                   "right now. I'm going to stop here — try restarting me in a few minutes, "
+                   "or come back tomorrow morning if the daily limit has been reached.")
+
+    # Genuine network or connection failures — Sarvam outage, no internet, etc.
+    elif isinstance(exception, (ConnectionError, TimeoutError, OSError)) or \
+         any(k in error_text for k in ("connection", "network", "timeout", "unreachable", "unavailable", "503")):
+        message = ("I'm having trouble reaching the services I need right now. "
+                   "I'm going to stop here — please check your connection and restart me when you're ready.")
+
+    # Catch-all for any other unexpected error
+    else:
+        message = ("Something went wrong on my end. "
+                   "I'm going to stop here — please restart me when you're ready.")
+
+    try:
+        # Speak the exit message in the user's language via the normal TTS pipeline
+        vaani_output(message, user_lang_code)
+    except Exception as tts_err:
+        # If TTS itself fails, just log — we're already exiting
+        print(f"[speak_error] Could not speak error message: {tts_err}")
+
 print("Vaani is ready. Start Speaking. To end conversation, say 'goodbye', 'bye', 'stop' or 'that's all for now'")
+
+error_exit = False  # set to True when we exit due to an error rather than a user goodbye
 
 while True:
     print("Listening....")
@@ -145,13 +199,19 @@ while True:
     # Translate to English before Gemini if user spoke another language
     if user_query.language_code != "en-IN":
         print("Detected Language is not English. Translating User query to English for improved reasoning")
-        translation = sarvam.text.translate(
-            input=user_query.transcript,
-            source_language_code=user_query.language_code,
-            target_language_code="en-IN"
-        )
-        gemini_input = translation.translated_text
-        print("User (in English): ", gemini_input)
+        try:
+            translation = sarvam.text.translate(
+                input=user_query.transcript,
+                source_language_code=user_query.language_code,
+                target_language_code="en-IN"
+            )
+            gemini_input = translation.translated_text
+            print("User (in English): ", gemini_input)
+        except Exception as e:
+            # Inbound translation failed — speak error and exit
+            speak_error(e, user_query.language_code)
+            error_exit = True
+            break
     else:
         gemini_input = user_query.transcript
 
@@ -159,9 +219,26 @@ while True:
         break
     else:
         print("Vaani is thinking.....")
-        llm_response = get_llm_response(chat_session, gemini_input)
+        try:
+            # Gemini call — most likely failure point (429, 503, network errors)
+            llm_response = get_llm_response(chat_session, gemini_input)
+        except Exception as e:
+            speak_error(e, user_query.language_code)
+            error_exit = True
+            break
 
-        vaani_output(llm_response, user_query.language_code)
+        try:
+            # Speak Vaani's reply — can fail at outbound translation or TTS step
+            vaani_output(llm_response, user_query.language_code)
+        except Exception as e:
+            speak_error(e, user_query.language_code)
+            error_exit = True
+            break
 
-exit_output = "Bye! I'm always here whenever you need me" 
-vaani_output(exit_output, user_query.language_code)        
+# Only play the normal goodbye if the user said bye — error exits already spoke their own ending
+if not error_exit:
+    exit_output = "Bye! I'm always here whenever you need me"
+    try:
+        vaani_output(exit_output, user_query.language_code)
+    except Exception as e:
+        speak_error(e, user_query.language_code)        
