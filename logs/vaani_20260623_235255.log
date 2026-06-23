@@ -1,0 +1,76 @@
+Vaani is ready. Start Speaking. To end conversation, say 'goodbye', 'bye', 'stop' or 'that's all for now'
+Listening....
+Done recording. Sending to Sarvam STT...
+User: హే వాణి నేను ఒక ట్రాన్సాక్షన్ రికార్డ్ చేయాలి.
+User spoke in  te-IN
+Detected Language is not English. Translating User query to English for improved reasoning
+User (in English):  Hi Vani, I need to record a transaction.
+Vaani (in English): Sure, go ahead and describe the transaction.
+Vaani: సరే, ఆ లావాదేవి గురించి వివరించండి.
+Transaction description: ఈరోజు నేను ₹1200 కి పెట్రోల్ కొట్టించాను. నా ఐసీఐసీఐ క్రెడిట్ కార్డు వాడి కొట్టించాను.
+Translated: I filled up petrol for ₹1200 today. I used my ICICI credit card to pay.
+Extracted fields: {'name': 'Petrol', 'amount': 1200.0, 'category': 'Travel', 'payment_medium': 'Credit Card', 'payment_source': 'ICICI Credit Card', 'notes': None}
+Vaani (in English): I've got 1200 rupees at Petrol, under Travel, paid by Credit Card. Shall I save this?
+Vaani: నా దగ్గర పెట్రోల్‌లో 1200 రూపాయలు ఉన్నాయి, క్రెడిట్ కార్డు ద్వారా చెల్లించాను. దీన్ని భద్రపరుద్దామా?
+Confirmation response: save it.
+Vaani (in English): Done! I've logged 1200 rupees at Petrol under Travel.
+Vaani: పూర్తయింది! నేను ప్రయాణ విభాగంలో 1200 రూపాయలు చెల్లించాను.
+Listening....
+Done recording. Sending to Sarvam STT...
+User: ప్రస్తావనకు అంతేలే బాయ్.
+User spoke in  te-IN
+Detected Language is not English. Translating User query to English for improved reasoning
+User (in English):  That's all for the introduction, guys.
+Vaani is thinking.....
+Traceback (most recent call last):
+  File "C:\Dev\Vaani Mk1\main.py", line 471, in <module>
+    llm_response = get_llm_response(chat_session, gemini_input)
+  File "C:\Dev\Vaani Mk1\main.py", line 96, in get_llm_response
+    response = chat_session.send_message(user_text)
+  File "C:\Users\sriva\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\google\genai\chats.py", line 252, in send_message
+    response = self._modules.generate_content(
+        model=self._model,
+        contents=self._curated_history + [input_content],  # type: ignore[arg-type]
+        config=config if config else self._config,
+    )
+  File "C:\Users\sriva\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\google\genai\models.py", line 6480, in generate_content
+    response = self._generate_content(
+        model=model, contents=contents, config=parsed_config
+    )
+  File "C:\Users\sriva\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\google\genai\models.py", line 4916, in _generate_content
+    response = self._api_client.request(
+        'post', path, request_dict, http_options
+    )
+  File "C:\Users\sriva\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\google\genai\_api_client.py", line 1611, in request
+    response = self._request(http_request, http_options, stream=False)
+  File "C:\Users\sriva\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\google\genai\_api_client.py", line 1404, in _request
+    return self._retry(self._request_once, http_request, stream)  # type: ignore[no-any-return]
+           ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\sriva\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\tenacity\__init__.py", line 470, in __call__
+    do = self.iter(retry_state=retry_state)
+  File "C:\Users\sriva\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\tenacity\__init__.py", line 371, in iter
+    result = action(retry_state)
+  File "C:\Users\sriva\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\tenacity\__init__.py", line 413, in exc_check
+    raise retry_exc.reraise()
+          ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\sriva\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\tenacity\__init__.py", line 184, in reraise
+    raise self.last_attempt.result()
+          ~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\sriva\AppData\Local\Python\pythoncore-3.14-64\Lib\concurrent\futures\_base.py", line 443, in result
+    return self.__get_result()
+           ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\sriva\AppData\Local\Python\pythoncore-3.14-64\Lib\concurrent\futures\_base.py", line 395, in __get_result
+    raise self._exception
+  File "C:\Users\sriva\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\tenacity\__init__.py", line 473, in __call__
+    result = fn(*args, **kwargs)
+  File "C:\Users\sriva\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\google\genai\_api_client.py", line 1381, in _request_once
+    errors.APIError.raise_for_response(response)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "C:\Users\sriva\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\google\genai\errors.py", line 155, in raise_for_response
+    cls.raise_error(response.status_code, response_json, response)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\sriva\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\google\genai\errors.py", line 184, in raise_error
+    raise ClientError(status_code, response_json, response)
+google.genai.errors.ClientError: 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. ', 'status': 'RESOURCE_EXHAUSTED', 'details': [{'@type': 'type.googleapis.com/google.rpc.Help', 'links': [{'description': 'Learn more about Gemini API quotas', 'url': 'https://ai.google.dev/gemini-api/docs/rate-limits'}]}]}}
+Vaani (in English): I've hit my processing limit for this minute. I'm going to have to stop here — please restart me in about sixty seconds.
+Vaani: ఈ నిమిషానికి నేను నా ప్రాసెసింగ్ పరిమితిని చేరుకున్నాను. నేను ఇక్కడ ఆగిపోవాల్సి వస్తుంది-సుమారు అరవై సెకన్లలో నన్ను పునఃప్రారంభించండి.

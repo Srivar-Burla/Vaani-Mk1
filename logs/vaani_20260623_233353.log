@@ -1,0 +1,73 @@
+Vaani is ready. Start Speaking. To end conversation, say 'goodbye', 'bye', 'stop' or 'that's all for now'
+Listening....
+Done recording. Sending to Sarvam STT...
+User: హే వాణి నేను ఒక ట్రాన్సాక్షన్ రికార్డ్ చేయాలి.
+User spoke in  te-IN
+Detected Language is not English. Translating User query to English for improved reasoning
+User (in English):  Hi Vani, I need to record a transaction.
+Vaani (in English): Sure, go ahead and describe the transaction.
+Vaani: సరే, ఆ లావాదేవి గురించి వివరించండి.
+Transaction description: నేను ఈరోజు యాభై రూపాయలు పెట్టి బనానాస్ కొన్నాను. యూపీఐతో నా ఐసీఐసీఐ అకౌంట్ నుంచి పే చేశాను.
+Translated: I bought a dozen bananas for fifty rupees today. I paid using my UPI from my ICICI account.
+[Transaction Error] ClientError: 404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-3-flash is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}
+Vaani (in English): I ran into a problem while logging that transaction. Let's continue our conversation.
+Vaani: ఆ లావాదేవిని నమోదు చేస్తుండగా నాకు ఒక సమస్య ఎదురైంది. మన సంభాషణను కొనసాగిద్దాం.
+Listening....
+Done recording. Sending to Sarvam STT...
+User: നോക്കിയേ ഇത് ഒരു സെക്കൻഡുവസി അലഞ്ചുമുവല്ലക്ക് ആളുകൾ ചുംബിടുന്ന ഇലക്റ്റ്. അത് എന്ന് പറഞ്ഞാൽ ഓഫ്ലൈൻ ഓപ്ഷൻ ആണ്. കടൽ കട്യം എന്ന് പറഞ്ഞാൽ  എ ഡി ആൻഡ് സി ആണ് ഇവിടുത്തെ സെൽ മൂവി സ്ക്രീൻ. അപ്പൊ മറ്റേ ഡീപ്സൈഡ് സ്ലൈഡ് ആക്കി ഇപ്പോൾ അടുത്ത കാര്യം എന്താണ്? അതിൻ്റെ കയ്യില് ഇതാണ് നമുക്ക് തന്നെ നമുക്ക് ഇതിൻ്റെ ഡിഫറെൻ്റ് ഡിസ്ക്രീസ് നോക്കാം. ഇപ്പോൾ ഈ ഒരു ഡെസപാൺ ആണ്. ഇത് നിങ്ങൾക്ക് കൺവെർട്ടി കാണിച്ചു കഴിഞ്ഞാൽ അലക് ആണ് എഹ് ഏതോ കുറച്ച് ഡിപേഴ്സ് വന്നു. ഇനി നമ്മൾ ഇത് എന്ത് ഇതൊക്കെ കണ്ട് കണ്ടെക്കാം.
+User spoke in  ml-IN
+Detected Language is not English. Translating User query to English for improved reasoning
+User (in English):  Look, this is a second-hand, not an old one, people are kissing it. It's an offline option. The cell movie screen here is the AD&D one. So, the other deep side slide is done. Now, what is the next thing? In its hand, this is what we can see, we can see its different differences. This is the present deity. This is a converter that shows you the amount of alcohol in drinks. Now we just gotta find out what it's all about.
+Vaani is thinking.....
+Traceback (most recent call last):
+  File "C:\Dev\Vaani Mk1\main.py", line 471, in <module>
+    llm_response = get_llm_response(chat_session, gemini_input)
+  File "C:\Dev\Vaani Mk1\main.py", line 96, in get_llm_response
+    response = chat_session.send_message(user_text)
+  File "C:\Users\sriva\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\google\genai\chats.py", line 252, in send_message
+    response = self._modules.generate_content(
+        model=self._model,
+        contents=self._curated_history + [input_content],  # type: ignore[arg-type]
+        config=config if config else self._config,
+    )
+  File "C:\Users\sriva\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\google\genai\models.py", line 6480, in generate_content
+    response = self._generate_content(
+        model=model, contents=contents, config=parsed_config
+    )
+  File "C:\Users\sriva\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\google\genai\models.py", line 4916, in _generate_content
+    response = self._api_client.request(
+        'post', path, request_dict, http_options
+    )
+  File "C:\Users\sriva\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\google\genai\_api_client.py", line 1611, in request
+    response = self._request(http_request, http_options, stream=False)
+  File "C:\Users\sriva\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\google\genai\_api_client.py", line 1404, in _request
+    return self._retry(self._request_once, http_request, stream)  # type: ignore[no-any-return]
+           ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\sriva\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\tenacity\__init__.py", line 470, in __call__
+    do = self.iter(retry_state=retry_state)
+  File "C:\Users\sriva\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\tenacity\__init__.py", line 371, in iter
+    result = action(retry_state)
+  File "C:\Users\sriva\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\tenacity\__init__.py", line 413, in exc_check
+    raise retry_exc.reraise()
+          ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\sriva\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\tenacity\__init__.py", line 184, in reraise
+    raise self.last_attempt.result()
+          ~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\sriva\AppData\Local\Python\pythoncore-3.14-64\Lib\concurrent\futures\_base.py", line 443, in result
+    return self.__get_result()
+           ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\sriva\AppData\Local\Python\pythoncore-3.14-64\Lib\concurrent\futures\_base.py", line 395, in __get_result
+    raise self._exception
+  File "C:\Users\sriva\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\tenacity\__init__.py", line 473, in __call__
+    result = fn(*args, **kwargs)
+  File "C:\Users\sriva\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\google\genai\_api_client.py", line 1381, in _request_once
+    errors.APIError.raise_for_response(response)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "C:\Users\sriva\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\google\genai\errors.py", line 155, in raise_for_response
+    cls.raise_error(response.status_code, response_json, response)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\sriva\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\google\genai\errors.py", line 186, in raise_error
+    raise ServerError(status_code, response_json, response)
+google.genai.errors.ServerError: 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status': 'UNAVAILABLE'}}
+Vaani (in English): I apologize, but I've run into a quota limit and can't take any more questions right now. I'm going to stop here — try restarting me in a few minutes, or come back tomorrow morning if the daily limit has been reached.
+Vaani: ക്ഷമിക്കണം, എന്നാൽ എനിക്ക് ഒരു ക്വാട്ട പരിധി നേരിട്ടു, ഇപ്പോൾ കൂടുതൽ ചോദ്യങ്ങൾ ചോദിക്കാൻ സാധ്യമല്ല. ഞാൻ ഇവിടെ നിർത്തുന്നു - കുറച്ച് മിനിറ്റുകൾക്കുള്ളിൽ എന്നെ പുനരാരംഭിക്കാമോ, അല്ലെങ്കിൽ ദിവസത്തെ പരിധി എത്തിയിട്ടുണ്ടെങ്കിൽ നാളെ രാവിലെ തിരികെ വരാമോ?

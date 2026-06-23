@@ -32,6 +32,8 @@ For Mk1, invocation is handled via a gesture on the TWS (button press). Always-o
 
 The spoken language is detected fresh on every turn during conversation. This ensures Vaani handles mid-conversation language changes seamlessly: a user can ask one question in English, the next in Telugu, and switch back, with Vaani responding in whatever language each question was asked. The conversation is not locked to a single language at the start.
 
+Vaani can now take actions, not just answer. A spoken command ("record a transaction") starts a guided flow that turns a natural spoken description into structured data and writes it to a real backend over an API. This is the shift from a voice interface to a voice agent, and it connects Vaani to the separate finance tracker project as the action layer behind the voice.
+
 ## Why Sarvam's Stack
 
 Sarvam AI has built their STT and TTS models specifically for Indian languages and accents. Transcription quality on Hindi, Telugu, and Kannada is noticeably better than generic western models. Their TTS produces natural-sounding Indian voice output rather than the flat, accented output you get from most English-first TTS systems.
@@ -49,6 +51,8 @@ For a voice assistant that needs to feel seamless to an Indian user speaking in 
 - [x] Full conversation turn: voice in → voice out
 - [x] Error handling for API failures (spoken, not crashed)
 - [x] Conditional web grounding (Gemini decides per turn when to search the live web)
+- [x] Transaction recording: voice command to structured fields to a real POST against the finance tracker API
+- [x] Session logging: every interaction and traceback captured to a per-session log file
 - [ ] TWS gesture invocation
 - [ ] Silence detection to end conversation
 
