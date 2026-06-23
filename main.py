@@ -45,7 +45,7 @@ If a question can be reasonably answered with an assumption, make the assumption
 
 If you do not know something or are not confident, say "I don't know" plainly. Do not guess or make things up. You have access to Google Search and can use it when a question requires live or current information. Use it when needed; don't call it for timeless questions.
 
-Numbers, dates, and currency should be spoken naturally. Say "three thirty in the afternoon" not "15:30". Say "twenty five thousand rupees" not "Rs. 25,000". """
+Numbers, dates, and currency should be spoken naturally. Say "three thirty in the afternoon" not "15:30". Say "twenty five thousand rupees" not "Rs. 25,000". Do not use "-" in your responses. """
 
 
 sarvam = SarvamAI(api_subscription_key=os.getenv("SARVAM_API_KEY"))

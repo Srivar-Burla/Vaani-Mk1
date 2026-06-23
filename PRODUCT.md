@@ -47,7 +47,8 @@ For a voice assistant that needs to feel seamless to an Indian user speaking in 
 - [x] Single Query: voice in → voice out
 - [x] Silence detection to end user turn dynamically instead of fixed duration input
 - [x] Full conversation turn: voice in → voice out
-- [ ] Error handling for API failures (spoken, not crashed)
+- [x] Error handling for API failures (spoken, not crashed)
+- [x] Conditional web grounding (Gemini decides per turn when to search the live web)
 - [ ] TWS gesture invocation
 - [ ] Silence detection to end conversation
 
@@ -61,8 +62,6 @@ Mk1 proves the core loop: speak in any supported Indian language, and Vaani list
 
 **Your choice of reasoning engine.** Vaani's architecture deliberately isolates the LLM so it can be swapped. Mk2 builds dedicated integration functions for each major provider (Gemini, Claude, and others) plus a path for locally hosted open source models, letting the user choose which intelligence sits underneath the voice, including private on-device options.
 
-**Web search grounding.** Without live information, Vaani can only answer from training data and must say "I don't know" for anything current. Mk2 adds grounded search so factual and time-sensitive questions get accurate, sourced answers.
-
 **Better English voice, and natural conversation endings.** Two known Mk1 limitations: English pronunciation (routing the English path to a stronger Indian-English voice provider) and detecting when a user naturally winds down a conversation ("thanks, that's all for now") rather than only catching explicit exit words.
 
 ### Mk2 — Current envisioned scope
@@ -70,8 +69,6 @@ Mk1 proves the core loop: speak in any supported Indian language, and Vaani list
 - Multiple reasoning-engine integrations (dedicated functions for Gemini, Claude, and other major providers, plus locally hosted open source models, so the LLM is user-selectable including private on-device options)
 
 - Semantic conversation-ending detection (Mk1 ends only on explicit exit words like "goodbye" or "stop"; natural wind-downs like "thanks, that's all for now" or "I'll let you know if I need anything else" are intent signals, not fixed phrases, and cannot be caught by string matching, so Mk2 would use the LLM to judge whether the user means to end)
-
-- Web search grounding (P0 for Mk2: without live information access, hallucination risk on factual queries is high; grounded responses can also cite sources(only if the User asks))
 
 - Persistent memory across sessions (Vaani takes notes on tasks, people, and personal context, and can refer to them in future conversations)
 
