@@ -138,12 +138,14 @@ def poll_queue():
 # ── Session management ─────────────────────────────────────────────────────────
 
 def _session_worker():
-    # Runs on a daemon background thread. Creates a fresh Gemini session for this
-    # conversation run, then blocks in run_conversation until the user says goodbye
-    # or an error exits the loop. run_conversation pushes "Idle" to ui_queue on exit.
+    # Runs on a daemon background thread. try/finally guarantees the session guard
+    # clears and the UI returns to Idle even if run_conversation raises unexpectedly.
     cs = create_chat_session()
-    run_conversation(cs, ui_queue)
-    _session_active.clear()
+    try:
+        run_conversation(cs, ui_queue)
+    finally:
+        _session_active.clear()
+        ui_queue.put({"type": "state", "value": "Idle"})
 
 
 def trigger_listen():

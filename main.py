@@ -471,12 +471,18 @@ def run_conversation(chat_session, ui_queue=None):
         tmp.close()
 
         # Send to Sarvam STT
-        with open(tmp.name, "rb") as f:
-            user_query = sarvam.speech_to_text.transcribe(
-                file=("audio.wav", f, "audio/wav"),
-                model="saarika:v2.5",
-                language_code="unknown"
-            )
+        try:
+            with open(tmp.name, "rb") as f:
+                user_query = sarvam.speech_to_text.transcribe(
+                    file=("audio.wav", f, "audio/wav"),
+                    model="saarika:v2.5",
+                    language_code="unknown"
+                )
+        except Exception as e:
+            os.unlink(tmp.name)
+            speak_error(e, "en-IN", ui_queue)
+            error_exit = True
+            break
 
         os.unlink(tmp.name)
 
