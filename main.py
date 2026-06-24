@@ -88,7 +88,7 @@ def create_chat_session():
         # attaches the search tool, a 3.x model made every conversational reply fail.
         # The transaction-extraction calls elsewhere don't use grounding, so they stay
         # on 3.1-flash-lite. See BUILDLOG for the full diagnosis.
-        model="gemini-2.5-flash",
+        model="gemini-3.1-flash-lite",
         config=types.GenerateContentConfig(
             system_instruction=SYSTEM_PROMPT,
             # google_search: Gemini decides per turn whether to call it (on-demand grounding).
