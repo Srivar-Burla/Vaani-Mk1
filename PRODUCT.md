@@ -73,6 +73,8 @@ Mk1 proves the core loop: speak in any supported Indian language, and Vaani list
 
 - Multiple reasoning-engine integrations (dedicated functions for Gemini, Claude, and other major providers, plus locally hosted open source models, so the LLM is user-selectable including private on-device options)
 
+- Selective-grounding router to reclaim daily quota (on the free tier every grounding-capable Gemini model, both 2.5 Flash and 2.5 Flash-Lite, is capped at about twenty requests per day, while the high-quota 3.x models cannot ground at all, so Mk1 runs the conversational path on 2.5 Flash and accepts the twenty-per-day cap; a Mk2 router would keep a high-quota non-grounding model as the primary brain, reroute only genuine live-info queries to a grounding model, and announce the lookup to the user; deferred because doing it in Mk1 would hard-code a Gemini-specific two-model routing path into the LLM layer and conflict with the swappable-LLM design, so it is folded into the Mk2 provider-integration work where a provider-agnostic grounding-and-routing layer can absorb it)
+
 - Semantic conversation-ending detection (Mk1 ends only on explicit exit words like "goodbye" or "stop"; natural wind-downs like "thanks, that's all for now" or "I'll let you know if I need anything else" are intent signals, not fixed phrases, and cannot be caught by string matching, so Mk2 would use the LLM to judge whether the user means to end)
 
 - Persistent memory across sessions (Vaani takes notes on tasks, people, and personal context, and can refer to them in future conversations)

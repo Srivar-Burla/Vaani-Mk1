@@ -82,7 +82,13 @@ llm_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 # a fresh session per conversation run.
 def create_chat_session():
     return llm_client.chats.create(
-        model="gemini-3.1-flash-lite",
+        # Chat model is gemini-2.5-flash, NOT 3.1-flash-lite. Reason: Google Search
+        # grounding (the tool below) is free on the 2.5 family but returns an instant
+        # 429 RESOURCE_EXHAUSTED on the 3.x family on our tier. Since every chat turn
+        # attaches the search tool, a 3.x model made every conversational reply fail.
+        # The transaction-extraction calls elsewhere don't use grounding, so they stay
+        # on 3.1-flash-lite. See BUILDLOG for the full diagnosis.
+        model="gemini-2.5-flash",
         config=types.GenerateContentConfig(
             system_instruction=SYSTEM_PROMPT,
             # google_search: Gemini decides per turn whether to call it (on-demand grounding).
@@ -93,6 +99,8 @@ def create_chat_session():
 
 def get_llm_response(chat_session, user_text):
     response = chat_session.send_message(user_text)
+    u = response.usage_metadata
+    print(f"[Gemini] tokens  in={u.prompt_token_count}  out={u.candidates_token_count}  total={u.total_token_count}")
     return response.text
 
 def record_until_silence():
