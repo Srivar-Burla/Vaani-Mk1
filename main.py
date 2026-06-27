@@ -102,9 +102,30 @@ def create_chat_session():
         model="gemini-3.1-flash-lite",
         config=types.GenerateContentConfig(
             system_instruction=time_context + SYSTEM_PROMPT,
-            # google_search: Gemini decides per turn whether to call it (on-demand grounding).
-            # No forced search — timeless questions go straight to the model's knowledge.
-            tools=[types.Tool(google_search=types.GoogleSearch())]
+            tools=[
+                # google_search: Gemini decides per turn whether to search the live web.
+                types.Tool(google_search=types.GoogleSearch()),
+                # record_transaction: Gemini calls this instead of replying when the user
+                # explicitly wants to log an expense. This replaces the separate
+                # is_transaction_request() classifier call, saving ~2.5s per turn.
+                types.Tool(function_declarations=[
+                    types.FunctionDeclaration(
+                        name="record_transaction",
+                        description=(
+                            "Record, log, save, or track a financial transaction or expense. "
+                            "Call this only when the user explicitly requests to record a "
+                            "transaction right now — not when they merely mention spending money."
+                        ),
+                        parameters=types.Schema(type=types.Type.OBJECT, properties={})
+                    )
+                ])
+            ],
+            # Required when mixing a built-in server-side tool (GoogleSearch) with a
+            # FunctionDeclaration in the same session. Without this flag the API returns
+            # a 400 INVALID_ARGUMENT on every turn.
+            tool_config=types.ToolConfig(
+                include_server_side_tool_invocations=True
+            )
         )
     )
 
@@ -113,6 +134,10 @@ def get_llm_response(chat_session, user_text):
     response = chat_session.send_message(user_text)
     u = response.usage_metadata
     print(f"[Gemini] tokens  in={u.prompt_token_count}  out={u.candidates_token_count}  total={u.total_token_count}  |  {time.perf_counter()-t0:.2f}s")
+    # If Gemini chose to call record_transaction instead of replying, signal the caller.
+    if response.function_calls:
+        print(f"[Gemini] function call: {response.function_calls[0].name}")
+        return None
     return response.text
 
 def record_until_silence():
@@ -311,37 +336,6 @@ def extract_field_value(field_name, user_answer):
         contents=prompts[field_name]
     )
     return response.text.strip()
-
-def is_transaction_request(english_text):
-    # Intent check: does the user want to RECORD/LOG a transaction right now, or are
-    # they just chatting? Runs on the English text (after inbound translation) on the
-    # cheap flash-lite model, separate from chat_session so it never enters Vaani's
-    # conversational memory. This replaces the old brittle keyword list, which missed
-    # natural phrasings like "log an expense" and broke on translated Indic input.
-    # Returns True or False.
-    prompt = f"""You are an intent classifier for a voice assistant that can record financial transactions.
-
-Decide whether the user's message is a request to RECORD, LOG, SAVE, or TRACK a transaction or expense (an action the assistant should perform now), as opposed to just chatting or asking a question about money.
-
-Reply with exactly one word: yes or no.
-
-Examples:
-"I would like to log an expense" -> yes
-"log an expense" -> yes
-"I need to record a transaction" -> yes
-"can you save this payment" -> yes
-"I spent 1600 rupees on petrol, please add that" -> yes
-"how much does petrol cost in Bangalore" -> no
-"I spent too much money today" -> no
-"what is the price of silver" -> no
-
-User message: "{english_text}"
-Answer:"""
-    response = llm_client.models.generate_content(
-        model="gemini-3.1-flash-lite",
-        contents=prompt
-    )
-    return response.text.strip().lower().startswith("yes")
 
 def post_transaction(fields):
     # POSTs a completed transaction dict to the finance tracker API.
@@ -612,29 +606,24 @@ def run_conversation(chat_session, ui_queue=None):
         if any(phrase in gemini_input.lower() for phrase in EXIT_PHRASES):
             break
 
-        # Not an exit, so show Thinking while we classify intent and then act on it.
+        # Single Gemini call handles both routing and response. If the user wants to
+        # log a transaction, Gemini calls the record_transaction function (returns None)
+        # instead of a text reply — no separate classifier call needed.
         push({"type": "state", "value": "Thinking"})
+        print("Vaani is thinking.....")
+        try:
+            llm_response = get_llm_response(chat_session, gemini_input)
+        except Exception as e:
+            speak_error(e, user_query.language_code, ui_queue)
+            error_exit = True
+            break
 
-        # LLM intent check (one cheap flash-lite call) replaces the old keyword list.
-        # It is robust to natural phrasing and to translated Indic input.
-        t0 = time.perf_counter()
-        intent_is_transaction = is_transaction_request(gemini_input)
-        print(f"[intent] {time.perf_counter()-t0:.2f}s")
-        if intent_is_transaction:
-            # Hand off to the transaction recording flow — returns to listening when done
+        if llm_response is None:
+            # Gemini signalled a transaction intent — hand off to the guided flow
             record_transaction(user_query.language_code, ui_queue)
+            print(f"[turn-total] {time.perf_counter()-t_turn:.2f}s")
         else:
-            print("Vaani is thinking.....")
             try:
-                # Gemini call — most likely failure point (429, 503, network errors)
-                llm_response = get_llm_response(chat_session, gemini_input)
-            except Exception as e:
-                speak_error(e, user_query.language_code, ui_queue)
-                error_exit = True
-                break
-
-            try:
-                # Speak Vaani's reply — vaani_output pushes Speaking state + transcript
                 vaani_output(llm_response, user_query.language_code, ui_queue)
                 print(f"[turn-total] {time.perf_counter()-t_turn:.2f}s")
             except Exception as e:

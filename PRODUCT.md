@@ -56,7 +56,7 @@ For a voice assistant that needs to feel seamless to an Indian user speaking in 
 - [x] Desktop UI with assistant state, multilingual transcript, and Start Listening fallback
 - [x] TWS Play/Pause gesture invocation through Windows media controls
 - [x] Mobile-first web UI (Python standard-library server plus Server-Sent Events): an everyday chat view and a step-by-step pipeline view behind a discreet toggle, now the primary interface in place of the Tkinter desktop UI
-- [x] LLM-based transaction intent detection, replacing the brittle keyword phrase list that silently missed natural requests
+- [x] Transaction intent detection via Gemini function calling: routing decision and conversational response happen in a single API call, eliminating both the brittle keyword list and the separate flash-lite classifier call that was costing 2.5 seconds per turn
 - [x] System prompt hardened so Vaani never claims to have performed an action it cannot, and stops ending every reply with a check-in question
 - [ ] Silence detection to end conversation
 

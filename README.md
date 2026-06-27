@@ -6,7 +6,7 @@ Mk1 is an early working version of that product. A Play or Pause gesture on a TW
 
 ## What Vaani can do
 
-- Start listening from a TWS Play or Pause gesture, with a desktop button as a fallback.
+- Start listening from a TWS Play or Pause gesture, with a Start Listening button in the web interface as a fallback.
 - Detect the language on every turn and support language changes within one conversation.
 - Translate non-English speech to English for reasoning, then translate the response back before speaking.
 - Use Google Search conditionally when a question requires current information.
@@ -44,7 +44,7 @@ The voice pipeline and reasoning layer are deliberately separated. Gemini is cur
 - Reasoning: Google Gemini 3.1 Flash-Lite
 - Live information: conditional Gemini Google Search grounding
 - Text-to-speech: Sarvam Bulbul v2, using the Anushka voice
-- Desktop interface: Tkinter
+- Primary interface: Python standard-library HTTP server with Server-Sent Events (web_ui.py), a mobile-first chat view and a step-by-step pipeline view
 - TWS gesture integration: Windows Runtime System Media Transport Controls
 - Audio capture and playback: sounddevice and soundfile
 
@@ -75,21 +75,27 @@ The Mk1 desktop and TWS integration currently target Windows.
    - Keep `gemini-3.1-flash-lite` but remove the Google Search tool from `create_chat_session()`. Vaani then runs uncapped on the free tier, answering from the model's own knowledge with no live web access.
    - For live grounding without a paid Gemini key, integrate a separate search API with a more generous free tier, such as [Brave Search](https://brave.com/search/api/) (2,000 queries per month) or [Tavily](https://tavily.com/) (1,000 per month), and feed the results to a free-tier LLM. This is not built into Mk1.
 
-4. Start the desktop experience:
+4. Start Vaani:
+
+   ```powershell
+   python web_ui.py
+   ```
+
+   Open `http://localhost:8765` in a browser. Use the Start Listening button or a TWS Play or Pause gesture to begin a conversation. To access Vaani from a phone on the same Wi-Fi network, use the LAN address printed on startup.
+
+   The original Tkinter desktop interface is still available as a fallback:
 
    ```powershell
    python ui.py
    ```
 
-   Use the Start Listening button or a TWS Play or Pause gesture to begin a conversation.
-
-For development and full terminal output, run:
+For development and full terminal output without any interface, run:
 
 ```powershell
 python main.py
 ```
 
-Both entry points write timestamped diagnostic logs under `logs/`. The directory is excluded from Git.
+All entry points write timestamped diagnostic logs under `logs/`. The directory is excluded from Git.
 
 ## Project documentation
 
@@ -103,4 +109,4 @@ The project keeps product thinking, engineering history, and agent instructions 
 
 ## Project status
 
-Vaani Mk1 is in active development. The multilingual conversation loop, desktop interface, hands-free TWS invocation, conditional web grounding, session logging, and first external API action are working. See [`PRODUCT.md`](PRODUCT.md) for the current build plan and future direction, and [`BUILDLOG.md`](BUILDLOG.md) for the decisions behind the implementation.
+Vaani Mk1 is in active development. The multilingual conversation loop, mobile-first web interface, hands-free TWS invocation, conditional web grounding, session logging, and transaction recording via external API are working. See [`PRODUCT.md`](PRODUCT.md) for the current build plan and future direction, and [`BUILDLOG.md`](BUILDLOG.md) for the decisions behind the implementation.
