@@ -2,3 +2,11 @@
 logs/
 notes.txt
 __pycache__/
+
+# Claude Code session files (local to this machine)
+.claude/
+
+# graphify tool files (local knowledge graph tooling, not part of the project source)
+.codex/
+.graphifyignore
+graphify-out/

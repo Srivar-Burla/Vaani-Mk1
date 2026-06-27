@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Vaani</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.31.0/dist/tabler-icons.min.css">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    padding: 16px; background: #ECE6DB;
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif; color: #2C2820;
+  }
+  @keyframes vpulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.16)} }
+  @keyframes vring  { 0%{box-shadow:0 0 0 0 var(--vc)} 70%,100%{box-shadow:0 0 0 9px transparent} }
+  @keyframes blink  { 0%,100%{opacity:1} 50%{opacity:.3} }
+  button { font-family: inherit; }
+  .mono { font-family: "SF Mono", "Cascadia Code", Consolas, monospace; }
+  /* internal scroll for the message areas so long conversations stay inside the frame */
+  #everyday, #log { max-height: 300px; overflow-y: auto; }
+  #everyday::-webkit-scrollbar, #log::-webkit-scrollbar { width: 0; }
+</style>
+</head>
+<body>
+
+<div style="width:340px;background:#FFFFFF;border:1px solid #E7E0D4;border-radius:28px;padding:14px 12px 16px;">
+
+  <!-- Header: status orb + wordmark, and the discreet pipeline toggle behind the kebab menu -->
+  <div style="position:relative;display:flex;align-items:center;justify-content:space-between;padding:4px 6px 12px;">
+    <div style="display:flex;align-items:center;gap:9px;">
+      <div id="orb" style="width:24px;height:24px;border-radius:50%;background:#EF9F27;"></div>
+      <div style="display:flex;flex-direction:column;line-height:1.1;">
+        <span style="font-size:17px;font-weight:500;letter-spacing:.3px;">Vaani</span>
+        <span id="cap" style="font-size:10px;color:#97907f;margin-top:1px;">Idle</span>
+      </div>
+    </div>
+    <button id="kebab" onclick="toggleMenu()" aria-label="Settings" style="border:0;background:transparent;color:#b3ab9b;cursor:pointer;font-size:19px;padding:4px;"><i class="ti ti-dots-vertical"></i></button>
+    <div id="menu" style="display:none;position:absolute;right:6px;top:34px;z-index:5;background:#FFFFFF;border:1px solid #E7E0D4;border-radius:12px;padding:6px;box-shadow:0 6px 18px rgba(80,60,20,.10);width:178px;">
+      <div onclick="toggleDemo()" style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border-radius:8px;cursor:pointer;">
+        <span style="font-size:13px;color:#2C2820;">Show pipeline</span>
+        <span id="sw" style="width:34px;height:20px;border-radius:999px;background:#E0D9CB;position:relative;transition:background .15s;">
+          <span id="swdot" style="position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#FFFFFF;transition:left .15s;"></span>
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <div style="background:#F5F1E8;border-radius:18px;padding:12px;min-height:392px;">
+
+    <!-- EVERYDAY VIEW: a growing chat of native-script bubbles with English beneath -->
+    <div id="everyday" style="padding:2px;">
+      <div id="ev-empty" style="text-align:center;color:#b3ab9b;font-size:13px;padding:150px 20px;">Tap the mic to start talking to Vaani.</div>
+    </div>
+
+    <!-- DEMO VIEW: Part A (live state) + Part B (terminal-style transcript) -->
+    <div id="demo" style="display:none;">
+      <div style="background:#FFFFFF;border:1px solid #E7E0D4;border-radius:14px;padding:12px 14px;margin-bottom:10px;">
+        <div style="font-size:9px;color:#b3ab9b;letter-spacing:1px;margin-bottom:11px;">CURRENTLY</div>
+        <div id="steps" style="display:flex;align-items:center;margin-bottom:13px;"></div>
+        <div style="display:flex;align-items:center;gap:9px;">
+          <span id="nowdot" style="width:9px;height:9px;border-radius:50%;background:#D8D0C0;flex:none;"></span>
+          <span id="nowlabel" style="font-size:17px;font-weight:500;">Idle</span>
+        </div>
+      </div>
+      <div style="background:#FFFFFF;border:1px solid #E7E0D4;border-radius:14px;padding:12px 14px;">
+        <div style="font-size:9px;color:#b3ab9b;letter-spacing:1px;margin-bottom:10px;">TRANSCRIPT</div>
+        <div id="log" class="mono"><div id="log-empty" style="font-size:12px;color:#b3ab9b;">Waiting for a turn…</div></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Trigger row: Start listening fallback + the mic gesture button -->
+  <div style="display:flex;align-items:center;gap:10px;padding:14px 4px 2px;">
+    <button id="startbtn" onclick="startSession()" style="flex:1;border:1px solid #E7E0D4;border-radius:999px;padding:11px;font-size:14px;font-weight:500;cursor:pointer;background:#FFFFFF;color:#2C2820;">
+      <i class="ti ti-microphone" style="vertical-align:-2px;"></i> Start listening
+    </button>
+    <button id="micbtn" onclick="startSession()" aria-label="Start listening" style="width:46px;height:46px;border:0;border-radius:50%;background:#EF9F27;display:flex;align-items:center;justify-content:center;color:#412402;font-size:22px;cursor:pointer;">
+      <i class="ti ti-microphone"></i>
+    </button>
+  </div>
+
+</div>
+
+<script>
+// ── Static config ──────────────────────────────────────────────────────────
+// The five present-tense pipeline states, in order, for the Part A step rail.
+const STEPS = [
+  {icon:"ti-microphone",      state:"Listening"},
+  {icon:"ti-language",        state:"Translating to English"},
+  {icon:"ti-bulb",            state:"Thinking"},
+  {icon:"ti-arrows-exchange", state:"Translating back"},
+  {icon:"ti-volume",          state:"Speaking"}
+];
+const STEP_INDEX = { "Listening":0, "Translating to English":1, "Thinking":2, "Translating back":3, "Speaking":4 };
+const COL = { listening:'#1D9E75', thinking:'#EF9F27', speaking:'#378ADD', idle:'#EF9F27' };
+// Map a state value to the orb colour family it belongs to.
+const STATE_ORB = { "Listening":"listening", "Translating to English":"thinking", "Thinking":"thinking", "Translating back":"thinking", "Speaking":"speaking" };
+// Sarvam language codes to readable names, used for transcript labels.
+const LANG = { "en-IN":"English","hi-IN":"Hindi","te-IN":"Telugu","kn-IN":"Kannada","ta-IN":"Tamil","ml-IN":"Malayalam","mr-IN":"Marathi","bn-IN":"Bengali","gu-IN":"Gujarati","pa-IN":"Punjabi","od-IN":"Odia" };
+function langName(code){ return LANG[code] || code || "your language"; }
+
+// ── Build the Part A step rail ───────────────────────────────────────────────
+const stepsEl = document.getElementById('steps');
+stepsEl.innerHTML = STEPS.map((s,i)=>`
+  ${i>0?`<div id="conn-${i}" style="flex:1;height:2px;background:#E0D9CB;margin:0 -1px;"></div>`:''}
+  <div id="step-${i}" style="width:28px;height:28px;flex:none;border-radius:50%;background:#F5F1E8;border:2px solid #D8D0C0;display:flex;align-items:center;justify-content:center;font-size:14px;color:#b3ab9b;"><i class="ti ${s.icon}"></i></div>
+`).join('');
+
+// ── View toggle (everyday <-> demo), hidden behind the kebab menu ────────────
+let demoOn=false, menuOpen=false;
+function toggleMenu(){ menuOpen=!menuOpen; document.getElementById('menu').style.display=menuOpen?'block':'none'; }
+function toggleDemo(){
+  demoOn=!demoOn;
+  document.getElementById('everyday').style.display=demoOn?'none':'block';
+  document.getElementById('demo').style.display=demoOn?'block':'none';
+  document.getElementById('sw').style.background=demoOn?'#EF9F27':'#E0D9CB';
+  document.getElementById('swdot').style.left=demoOn?'16px':'2px';
+}
+
+// ── Orb + Part A state rendering ─────────────────────────────────────────────
+const orb=document.getElementById('orb'), cap=document.getElementById('cap');
+const nowdot=document.getElementById('nowdot'), nowlabel=document.getElementById('nowlabel');
+let currentLang = "te-IN";  // tracked from the latest user turn, for the "Translating back" label
+
+function setOrb(family){
+  const anim={ idle:'none',
+    listening:'vpulse 1.1s infinite, vring 1.1s infinite',
+    thinking:'vpulse 1.1s infinite',
+    speaking:'vpulse .75s infinite, vring .75s infinite' };
+  orb.style.setProperty('--vc', COL[family]+'66');
+  orb.style.background=COL[family]; orb.style.animation=anim[family];
+}
+function setStep(i,st){
+  const node=document.getElementById('step-'+i); if(!node) return;
+  if(st==='active'){ node.style.borderColor='#EF9F27'; node.style.color='#BA7517'; node.style.background='#FAEEDA'; }
+  if(st==='done'){ node.style.borderColor='#1D9E75'; node.style.color='#0F6E56'; node.style.background='#E1F5EE'; const c=document.getElementById('conn-'+i); if(c) c.style.background='#9FE1CB'; }
+  if(st==='pending'){ node.style.borderColor='#D8D0C0'; node.style.color='#b3ab9b'; node.style.background='#F5F1E8'; const c=document.getElementById('conn-'+i); if(c) c.style.background='#E0D9CB'; }
+}
+function resetSteps(){ STEPS.forEach((_,i)=>setStep(i,'pending')); }
+
+function handleState(value){
+  if(value==="Idle"){
+    // Turn finished: settle the whole rail to done (all green) rather than leaving
+    // the last step stuck mid-active. A fresh Listening resets it to pending.
+    STEPS.forEach((_,i)=>setStep(i,'done'));
+    nowlabel.textContent='Idle'; nowlabel.style.color='#2C2820';
+    nowdot.style.background='#D8D0C0'; nowdot.style.animation='none';
+    setOrb('idle'); cap.textContent='Idle'; cap.style.color='#97907f';
+    setActive(false);
+    return;
+  }
+  // A new "Listening" marks the start of a fresh turn — reset the rail.
+  if(value==="Listening") resetSteps();
+
+  const idx = STEP_INDEX[value];
+  if(idx !== undefined){
+    for(let i=0;i<idx;i++) setStep(i,'done');   // everything before the current step is done
+    setStep(idx,'active');
+  }
+  const family = STATE_ORB[value] || 'thinking';
+  setOrb(family);
+  // The label reads exactly the present-tense state, with the live language for the back-translation.
+  const label = (value==="Translating back") ? ("Translating to " + langName(currentLang)) : value;
+  nowlabel.textContent=label; nowlabel.style.color=COL[family];
+  cap.textContent=value==="Translating to English"||value==="Translating back"?"Translating":value;
+  cap.style.color=COL[family];
+  nowdot.style.background=COL[family]; nowdot.style.animation='blink 1s infinite';
+}
+
+// ── Transcript rendering (both views) ────────────────────────────────────────
+function clearScreen(){
+  const ev=document.getElementById('everyday'); ev.innerHTML='';
+  const lg=document.getElementById('log'); lg.innerHTML='';
+}
+function evBubble(side, native, english, web){
+  // One chat bubble: native script prominent, optional English translation beneath.
+  const ev=document.getElementById('everyday');
+  const mine = side==='user';
+  const wrap=document.createElement('div');
+  wrap.style.cssText=`display:flex;justify-content:${mine?'flex-end':'flex-start'};margin:8px 0;`;
+  const engColor = mine ? '#8a5616' : '#97907f';
+  const divColor = mine ? 'rgba(99,56,6,.18)' : '#EFE8DA';
+  wrap.innerHTML=`
+    <div style="max-width:84%;${mine?'background:#FAC775;color:#633806;border-radius:14px 14px 4px 14px;':'background:#FFFFFF;border:1px solid #E7E0D4;border-radius:14px 14px 14px 4px;'}padding:9px 12px;">
+      <div style="font-size:15px;line-height:1.4;">${native}</div>
+      ${english?`<div style="font-size:12px;font-style:italic;line-height:1.35;margin-top:5px;padding-top:5px;border-top:1px solid ${divColor};color:${engColor};">${english}</div>`:''}
+      ${web?`<div style="display:flex;align-items:center;gap:5px;font-size:10px;margin-top:6px;color:#0F6E56;"><i class="ti ti-world"></i>checked live web</div>`:''}
+    </div>`;
+  ev.appendChild(wrap);
+  ev.scrollTop=ev.scrollHeight;
+}
+function logLine(tag, val){
+  const lg=document.getElementById('log');
+  const row=document.createElement('div');
+  row.style.cssText='padding:6px 0 6px 10px;border-left:2px solid #EF9F27;margin-bottom:8px;';
+  row.innerHTML=`<div style="font-size:10px;color:#97907f;margin-bottom:3px;">${tag}</div>
+                 <div style="font-size:12.5px;color:#2C2820;line-height:1.4;word-break:break-word;">${val}</div>`;
+  lg.appendChild(row);
+  lg.scrollTop=lg.scrollHeight;
+}
+
+function handleTranscript(msg){
+  if(msg.speaker==="User"){
+    if(msg.lang) currentLang = msg.lang;
+    const name = langName(msg.lang);
+    // Everyday: native prominent, English beneath (only when translated)
+    evBubble('user', msg.text, msg.translated || null, false);
+    // Demo log mirrors the terminal: "User · <lang>" then "User (in English)"
+    logLine(`User · ${name}`, msg.text);
+    if(msg.translated) logLine("User (in English)", msg.translated);
+  } else {  // Vaani: msg.text is the English output, msg.translated is the spoken native reply
+    const native = msg.translated || msg.text;
+    const english = msg.translated ? msg.text : null;
+    evBubble('vaani', native, english, false);
+    logLine("Vaani (in English)", msg.text);
+    if(msg.translated) logLine(`Vaani · ${langName(currentLang)}`, msg.translated);
+  }
+}
+
+// ── Trigger + active-state UI ────────────────────────────────────────────────
+let active=false;
+function setActive(on){
+  active=on;
+  const b=document.getElementById('startbtn'), m=document.getElementById('micbtn');
+  b.textContent = on ? "Listening…" : "";
+  if(!on){ b.innerHTML = '<i class="ti ti-microphone" style="vertical-align:-2px;"></i> Start listening'; }
+  b.style.opacity = on ? '.6' : '1';
+  m.style.animation = on ? 'vpulse 1.1s infinite' : 'none';
+}
+function startSession(){
+  if(active) return;
+  fetch('/trigger', {method:'POST'}).catch(()=>{});
+}
+
+// ── SSE connection: the live link to the pipeline ────────────────────────────
+function connect(){
+  const es = new EventSource('/events');
+  es.onmessage = (e)=>{
+    let msg; try { msg = JSON.parse(e.data); } catch { return; }
+    if(msg.type==="session" && msg.event==="start"){ clearScreen(); resetSteps(); setActive(true); }
+    else if(msg.type==="state"){ if(msg.value!=="Idle") setActive(true); handleState(msg.value); }
+    else if(msg.type==="transcript"){ handleTranscript(msg); }
+  };
+  es.onerror = ()=>{ /* EventSource auto-reconnects */ };
+}
+connect();
+
+// Close the settings menu when tapping anywhere outside it (the kebab itself is
+// handled by toggleMenu, so it is excluded here to avoid double-toggling).
+document.addEventListener('click', (e)=>{
+  if(!menuOpen) return;
+  const menu=document.getElementById('menu'), kebab=document.getElementById('kebab');
+  if(!menu.contains(e.target) && !kebab.contains(e.target)){
+    menuOpen=false; menu.style.display='none';
+  }
+});
+</script>
+</body>
+</html>

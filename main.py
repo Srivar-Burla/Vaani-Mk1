@@ -1,5 +1,7 @@
 import os
 import sys
+import re
+import time
 import datetime
 import atexit
 import tempfile
@@ -40,7 +42,8 @@ SILENCE_CHUNKS = 20
 EXIT_PHRASES = ["goodbye", "bye", "stop" , "that's all for now"]
 #EXIT_PHRASES = ["bye"]
 
-TRANSACTION_TRIGGER_PHRASES = ["log a transaction", "record a transaction", "add an expense", "log expense", "record expense", "save a transaction", "add a transaction", "record a payment", "log a payment"]
+# Transaction intent is now decided by is_transaction_request() (an LLM classifier),
+# which replaced the old brittle TRANSACTION_TRIGGER_PHRASES substring list.
 
 # Base URL for the personal finance tracker API (set in .env as FINANCE_API_URL)
 FINANCE_API_URL = os.getenv("FINANCE_API_URL")
@@ -56,19 +59,22 @@ Everything you say will be spoken aloud by a text to speech system. Follow these
 
 Keep responses short. Two to four sentences for most answers. This is a voice conversation, not an essay.
 
+
 Never use bullet points, numbered lists, headings, or any markdown formatting. Use connective language instead, like first, then, finally.
 
-For longer explanations, structure your response sequentially and break it at natural boundaries, like after completing one concept and before starting the next. At these points, check in with the user before continuing. Vary how you ask: "should I go on?", "are you following me so far?", "any questions before I continue?". Never break midway through a single idea or thought, as this disrupts the user's understanding.
+Most answers should be short and end on a statement, not a question. Do not add a check-in or follow-up question to the end of every reply. Only ask the user a question when you genuinely need information to continue, or in the specific case where you are deliberately splitting one genuinely long explanation across several turns. In that case, and only then, pause at a natural boundary between concepts and check in before continuing, varying how you ask: "should I go on?", "are you following me so far?". Never break midway through a single idea or thought.
 
 Avoid abbreviations and acronyms that sound wrong when spoken. Say "as soon as possible" not ASAP. If an acronym is widely spoken aloud, like API or UPI, it is fine to use. Spell out alphanumeric codes and identifiers the way a person would say them aloud. For example, write "National Highway forty four" not "NH44", and "highway sixty six" not "NH66". Expand any short form that a listener would otherwise hear as a jumble of letters and numbers.
 
-Be decisive. Give a clear answer first, then offer to elaborate. Do not front-load your uncertainty with hedges.
+Be decisive. Give a clear answer and stop there. Do not front-load your uncertainty with hedges, and do not routinely offer to elaborate or ask whether they want more detail.
 
 Never begin a response with disclaimers, caveats, or qualifiers like "it depends", "this is subjective", or "the best can vary from person to person". The user knows estimates are estimates and recommendations are opinions. Answer directly with your best recommendation or estimate first. Mention an important caveat only after the answer, in one short phrase, and only if it genuinely matters.
 
 If a question can be reasonably answered with an assumption, make the assumption and state it briefly rather than asking the user for more details. For example, if asked how long a drive takes, assume a car and typical traffic, and say so in passing.
 
 If you do not know something or are not confident, say "I don't know" plainly. Do not guess or make things up. You have access to Google Search and can use it when a question requires live or current information. Use it when needed; don't call it for timeless questions.
+
+You cannot record, log, save, or store transactions, expenses, notes, reminders, or any other data yourself. A separate part of the system records transactions when the user asks. Never tell the user that you have logged, saved, recorded, added, or stored something. If the user mentions an expense or transaction in passing, do not claim to have recorded it. If they clearly want something recorded, that request is handled outside this conversation, so do not pretend to do it yourself.
 
 Numbers, dates, and currency should be spoken naturally. Say "three thirty in the afternoon" not "15:30". Say "twenty five thousand rupees" not "Rs. 25,000". Do not use "-" in your responses. """
 
@@ -81,16 +87,21 @@ llm_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 # Factory used by both terminal (main.py __main__) and GUI (ui.py) to create
 # a fresh session per conversation run.
 def create_chat_session():
+    # Prepend the current date/time so Vaani always knows when "now" is.
+    # Without this the model hallucinates the time or forgets a grounded answer by the next turn.
+    now = datetime.datetime.now()
+    time_context = (
+        f"Today is {now.strftime('%A, %d %B %Y')}. "
+        f"The current time is {now.strftime('%I:%M %p')}.\n\n"
+    )
     return llm_client.chats.create(
-        # Chat model is gemini-2.5-flash, NOT 3.1-flash-lite. Reason: Google Search
-        # grounding (the tool below) is free on the 2.5 family but returns an instant
-        # 429 RESOURCE_EXHAUSTED on the 3.x family on our tier. Since every chat turn
-        # attaches the search tool, a 3.x model made every conversational reply fail.
-        # The transaction-extraction calls elsewhere don't use grounding, so they stay
-        # on 3.1-flash-lite. See BUILDLOG for the full diagnosis.
+        # Billing-enabled: grounding works on 3.1-flash-lite once billing is active.
+        # On the free tier, 3.x models cannot ground and this caused an instant 429 on
+        # every turn (see BUILDLOG Entry 17). Billing dissolved that constraint (Entry 19),
+        # so the whole app now runs one model. Free-tier fallbacks are in the README.
         model="gemini-3.1-flash-lite",
         config=types.GenerateContentConfig(
-            system_instruction=SYSTEM_PROMPT,
+            system_instruction=time_context + SYSTEM_PROMPT,
             # google_search: Gemini decides per turn whether to call it (on-demand grounding).
             # No forced search — timeless questions go straight to the model's knowledge.
             tools=[types.Tool(google_search=types.GoogleSearch())]
@@ -98,9 +109,10 @@ def create_chat_session():
     )
 
 def get_llm_response(chat_session, user_text):
+    t0 = time.perf_counter()
     response = chat_session.send_message(user_text)
     u = response.usage_metadata
-    print(f"[Gemini] tokens  in={u.prompt_token_count}  out={u.candidates_token_count}  total={u.total_token_count}")
+    print(f"[Gemini] tokens  in={u.prompt_token_count}  out={u.candidates_token_count}  total={u.total_token_count}  |  {time.perf_counter()-t0:.2f}s")
     return response.text
 
 def record_until_silence():
@@ -124,21 +136,48 @@ def record_until_silence():
         audio = np.concatenate(collection, axis=0)
         return audio
 
-def vaani_output(output, user_lang_code, ui_queue=None):
-    # Signal the UI that Vaani is about to speak, before any processing
-    if ui_queue is not None:
-        ui_queue.put({"type": "state", "value": "Speaking"})
+# Maps each uppercase letter to how it is spoken aloud in English.
+# Used to convert all-caps abbreviations into words Bulbul can pronounce correctly.
+_LETTER_SOUNDS = {
+    'A': 'Ay',    'B': 'Bee',  'C': 'See',  'D': 'Dee',  'E': 'Ee',
+    'F': 'Eff',   'G': 'Jee',  'H': 'Aitch','I': 'Eye',  'J': 'Jay',
+    'K': 'Kay',   'L': 'El',   'M': 'Em',   'N': 'En',   'O': 'Oh',
+    'P': 'Pee',   'Q': 'Kyoo', 'R': 'Ar',   'S': 'Ess',  'T': 'Tee',
+    'U': 'You',   'V': 'Vee',  'W': 'Double you', 'X': 'Ex', 'Y': 'Why',
+    'Z': 'Zee'
+}
 
+def expand_abbreviations(text):
+    # Any all-caps word (HDFC, ICICI, UPI, etc.) is spelled out as spoken letter names
+    # so Bulbul pronounces each character: HDFC -> Aitch Dee Eff See.
+    return re.sub(
+        r'\b[A-Z]+\b',
+        lambda m: " ".join(_LETTER_SOUNDS[c] for c in m.group(0)),
+        text
+    )
+
+def vaani_output(output, user_lang_code, ui_queue=None):
+    # On non-English turns, signal the outbound translation step (English -> user
+    # language) BEFORE Speaking, so the UI pipeline reads Translating-back then
+    # Speaking in the true order. This put happens before any real work begins.
     if user_lang_code != "en-IN":
+        if ui_queue is not None:
+            ui_queue.put({"type": "state", "value": "Translating back"})
         print("Vaani (in English):", output)
+        t0 = time.perf_counter()
         translation = sarvam.text.translate(
             input=output,
             source_language_code="en-IN",
             target_language_code=user_lang_code
         )
+        print(f"[translate-out] {time.perf_counter()-t0:.2f}s")
         vaani_reply = translation.translated_text
     else:
         vaani_reply = output
+
+    # Translation (if any) is done — Vaani is now about to actually speak.
+    if ui_queue is not None:
+        ui_queue.put({"type": "state", "value": "Speaking"})
 
     print("Vaani:", vaani_reply)
 
@@ -150,26 +189,31 @@ def vaani_output(output, user_lang_code, ui_queue=None):
             "translated": vaani_reply if user_lang_code != "en-IN" else None
         })
 
-    # Vaani speaks
+    # Vaani speaks — expand abbreviations only in the TTS feed, not in the log/UI text
+    tts_input = expand_abbreviations(vaani_reply)
+    t0 = time.perf_counter()
     tts_response = sarvam.text_to_speech.convert(
-        text=vaani_reply,
+        text=tts_input,
         model="bulbul:v2",
         target_language_code=user_lang_code,
         speaker="anushka"
     )
-    
+    print(f"[TTS-api] {time.perf_counter()-t0:.2f}s")
+
+    t_play = time.perf_counter()
     for segment in tts_response.audios:
         audio_bytes = base64.b64decode(segment)
 
         tts_file = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
         tts_file.write(audio_bytes)
         tts_file.close()
-        
+
         speech, rate = sf.read(tts_file.name)
         sd.play(speech, rate)
         sd.wait()
-        
+
         os.unlink(tts_file.name)
+    print(f"[Vaani-speaking] {time.perf_counter()-t_play:.2f}s")
 
 def speak_error(exception, user_lang_code, ui_queue=None):
     # Prints the full traceback to the terminal first so you can see the exact error,
@@ -267,6 +311,37 @@ def extract_field_value(field_name, user_answer):
         contents=prompts[field_name]
     )
     return response.text.strip()
+
+def is_transaction_request(english_text):
+    # Intent check: does the user want to RECORD/LOG a transaction right now, or are
+    # they just chatting? Runs on the English text (after inbound translation) on the
+    # cheap flash-lite model, separate from chat_session so it never enters Vaani's
+    # conversational memory. This replaces the old brittle keyword list, which missed
+    # natural phrasings like "log an expense" and broke on translated Indic input.
+    # Returns True or False.
+    prompt = f"""You are an intent classifier for a voice assistant that can record financial transactions.
+
+Decide whether the user's message is a request to RECORD, LOG, SAVE, or TRACK a transaction or expense (an action the assistant should perform now), as opposed to just chatting or asking a question about money.
+
+Reply with exactly one word: yes or no.
+
+Examples:
+"I would like to log an expense" -> yes
+"log an expense" -> yes
+"I need to record a transaction" -> yes
+"can you save this payment" -> yes
+"I spent 1600 rupees on petrol, please add that" -> yes
+"how much does petrol cost in Bangalore" -> no
+"I spent too much money today" -> no
+"what is the price of silver" -> no
+
+User message: "{english_text}"
+Answer:"""
+    response = llm_client.models.generate_content(
+        model="gemini-3.1-flash-lite",
+        contents=prompt
+    )
+    return response.text.strip().lower().startswith("yes")
 
 def post_transaction(fields):
     # POSTs a completed transaction dict to the finance tracker API.
@@ -470,7 +545,9 @@ def run_conversation(chat_session, ui_queue=None):
     while True:
         push({"type": "state", "value": "Listening"})
         print("Listening....")
+        t_turn = time.perf_counter()
         audio = record_until_silence()
+        print(f"[user-speaking] {time.perf_counter()-t_turn:.2f}s")
         print("Done recording. Sending to Sarvam STT...")
 
         # Save to temp WAV file
@@ -480,12 +557,14 @@ def run_conversation(chat_session, ui_queue=None):
 
         # Send to Sarvam STT
         try:
+            t0 = time.perf_counter()
             with open(tmp.name, "rb") as f:
                 user_query = sarvam.speech_to_text.transcribe(
                     file=("audio.wav", f, "audio/wav"),
                     model="saarika:v2.5",
                     language_code="unknown"
                 )
+            print(f"[STT] {time.perf_counter()-t0:.2f}s")
         except Exception as e:
             os.unlink(tmp.name)
             speak_error(e, "en-IN", ui_queue)
@@ -499,13 +578,19 @@ def run_conversation(chat_session, ui_queue=None):
 
         # Translate to English before Gemini if user spoke another language
         if user_query.language_code != "en-IN":
+            # Pipeline step 2 of 5 for the UI: we're translating the user's words to
+            # English before Gemini. Emitted only on non-English turns (English turns
+            # skip straight from Listening to Thinking).
+            push({"type": "state", "value": "Translating to English"})
             print("Detected Language is not English. Translating User query to English for improved reasoning")
             try:
+                t0 = time.perf_counter()
                 translation = sarvam.text.translate(
                     input=user_query.transcript,
                     source_language_code=user_query.language_code,
                     target_language_code="en-IN"
                 )
+                print(f"[translate-in] {time.perf_counter()-t0:.2f}s")
                 gemini_input = translation.translated_text
                 print("User (in English): ", gemini_input)
             except Exception as e:
@@ -526,12 +611,19 @@ def run_conversation(chat_session, ui_queue=None):
 
         if any(phrase in gemini_input.lower() for phrase in EXIT_PHRASES):
             break
-        elif any(phrase in gemini_input.lower() for phrase in TRANSACTION_TRIGGER_PHRASES):
+
+        # Not an exit, so show Thinking while we classify intent and then act on it.
+        push({"type": "state", "value": "Thinking"})
+
+        # LLM intent check (one cheap flash-lite call) replaces the old keyword list.
+        # It is robust to natural phrasing and to translated Indic input.
+        t0 = time.perf_counter()
+        intent_is_transaction = is_transaction_request(gemini_input)
+        print(f"[intent] {time.perf_counter()-t0:.2f}s")
+        if intent_is_transaction:
             # Hand off to the transaction recording flow — returns to listening when done
-            push({"type": "state", "value": "Thinking"})
             record_transaction(user_query.language_code, ui_queue)
         else:
-            push({"type": "state", "value": "Thinking"})
             print("Vaani is thinking.....")
             try:
                 # Gemini call — most likely failure point (429, 503, network errors)
@@ -544,6 +636,7 @@ def run_conversation(chat_session, ui_queue=None):
             try:
                 # Speak Vaani's reply — vaani_output pushes Speaking state + transcript
                 vaani_output(llm_response, user_query.language_code, ui_queue)
+                print(f"[turn-total] {time.perf_counter()-t_turn:.2f}s")
             except Exception as e:
                 speak_error(e, user_query.language_code, ui_queue)
                 error_exit = True

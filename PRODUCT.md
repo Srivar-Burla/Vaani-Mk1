@@ -26,7 +26,7 @@ The flow is: user speaks (in any supported Indian language) → Sarvam STT trans
 
 The key design decision is that the LLM is swappable. Gemini, Claude or other open source models, changing the reasoning engine requires changing one function. Everything else stays the same. This is the orchestration layer that doesn't exist natively in any of the current consumer AI products.
 
-Gemini 2.5 Flash is the reasoning layer for Mk1, chosen primarily because it is the only major LLM provider that offers free API access, which makes it practical for development and testing without upfront costs. Swapping to Claude or an open source model in a future version requires changing one function.
+Gemini 3.1 Flash-Lite is the reasoning layer for Mk1, chosen for its low latency and cost with quality positioned on par with 2.5 Flash, and it runs the conversational path and the transaction-extraction calls on a single model. Gemini was picked as the provider primarily because it offered free API access, which made early development practical without upfront cost. Live web grounding, however, requires a billing-enabled Gemini key: on the free tier the 3.x models cannot ground at all, and 2.5 Flash grounds but is capped at about twenty requests per day. Swapping to Claude or an open source model in a future version requires changing one function.
 
 For Mk1, invocation is handled via a gesture on the TWS (button press). Always-on wake word detection has been deliberately scoped out. Without deep hardware-level integration of the kind Siri and Gemini have, always-on mic scanning is too battery-intensive to be a viable approach on commodity earphones. 
 
@@ -55,6 +55,9 @@ For a voice assistant that needs to feel seamless to an Indian user speaking in 
 - [x] Session logging: every interaction and traceback captured to a per-session log file
 - [x] Desktop UI with assistant state, multilingual transcript, and Start Listening fallback
 - [x] TWS Play/Pause gesture invocation through Windows media controls
+- [x] Mobile-first web UI (Python standard-library server plus Server-Sent Events): an everyday chat view and a step-by-step pipeline view behind a discreet toggle, now the primary interface in place of the Tkinter desktop UI
+- [x] LLM-based transaction intent detection, replacing the brittle keyword phrase list that silently missed natural requests
+- [x] System prompt hardened so Vaani never claims to have performed an action it cannot, and stops ending every reply with a check-in question
 - [ ] Silence detection to end conversation
 
 ## Where Vaani Is Headed
@@ -73,7 +76,7 @@ Mk1 proves the core loop: speak in any supported Indian language, and Vaani list
 
 - Multiple reasoning-engine integrations (dedicated functions for Gemini, Claude, and other major providers, plus locally hosted open source models, so the LLM is user-selectable including private on-device options)
 
-- Selective-grounding router to reclaim daily quota (on the free tier every grounding-capable Gemini model, both 2.5 Flash and 2.5 Flash-Lite, is capped at about twenty requests per day, while the high-quota 3.x models cannot ground at all, so Mk1 runs the conversational path on 2.5 Flash and accepts the twenty-per-day cap; a Mk2 router would keep a high-quota non-grounding model as the primary brain, reroute only genuine live-info queries to a grounding model, and announce the lookup to the user; deferred because doing it in Mk1 would hard-code a Gemini-specific two-model routing path into the LLM layer and conflict with the swappable-LLM design, so it is folded into the Mk2 provider-integration work where a provider-agnostic grounding-and-routing layer can absorb it)
+- Free-tier accessibility for users without a paid Gemini key (Mk1 assumes a billing-enabled Gemini key, because live grounding needs one: on the free tier the 3.x models cannot ground and 2.5 Flash grounds but caps at about twenty requests per day. For a distributable product this paid dependency is a real barrier, so a future version would offer a graceful path for free-tier users, either running without live grounding, falling back to 2.5 Flash within its daily cap, or routing grounding through a separate search API with a more generous free tier such as Brave Search or Tavily paired with a free-tier LLM. This supersedes the earlier idea of a selective-grounding router, which existed only to work around free-tier quota and was made unnecessary by enabling billing, as recorded in BUILDLOG Entries 18 and 19.)
 
 - Semantic conversation-ending detection (Mk1 ends only on explicit exit words like "goodbye" or "stop"; natural wind-downs like "thanks, that's all for now" or "I'll let you know if I need anything else" are intent signals, not fixed phrases, and cannot be caught by string matching, so Mk2 would use the LLM to judge whether the user means to end)
 
@@ -88,4 +91,6 @@ Mk1 proves the core loop: speak in any supported Indian language, and Vaani list
 - TTS English pronunciation quality (confirmed model-level limitation in Bulbul across all speakers; English text from Latin script is mispronounced, including romanized Indian place names, and English is expected to be the dominant usage language; fix is to route the English path to a second provider with strong Indian-English voices, e.g. Google Cloud TTS or Azure, behind a provider-agnostic speak() function while keeping Sarvam for Indic languages; architecture designed, deferred due to cloud billing setup friction. Or maybe feed the English response phonetically to the TTS layer? Further exploration needed)
 
 - Text normalization pass between the LLM and TTS (deterministically expand alphanumeric codes, identifiers, and abbreviations so pronunciation does not depend on prompt instructions holding; currently handled by a system prompt rule that will not scale to every pattern)
+
+- Code-mixed translation quality (romanized English spoken inside an Indic sentence, for example "I need to log an expense" said within a Telugu utterance, is mistranslated by Sarvam before any downstream logic sees it; surfaced when it defeated the new transaction-intent classifier, which can only act on the English it is handed, so the lost intent cannot be recovered downstream)
 

@@ -26,7 +26,7 @@ with your recommendation, and wait for my answer. Do not proceed on these alone:
 
 ## The existing architecture (do not break this)
 Pipeline: user speaks, Sarvam STT (saarika v2.5), conditional inbound
-translation, Gemini 2.5 Flash behind get_llm_response(), conditional
+translation, Gemini 3.1 Flash-Lite behind get_llm_response(), conditional
 outbound translation, Sarvam TTS (bulbul v2, anushka).
 The LLM is isolated in get_llm_response() so it stays swappable.
 
@@ -80,3 +80,19 @@ change, and present it for my approval like any other diff. I review and adjust
 the wording before it lands, since these are in my voice. Once approved, it is
 committed alongside the code change it documents, or in a closely following docs
 commit.
+
+## Navigating the codebase with graphify
+
+This project has a knowledge graph at `graphify-out/graph.json`. Use it before
+reading source files — it is faster and surfaces cross-file relationships that
+are not obvious from reading individual files.
+
+- For any codebase question ("what calls X?", "how does Y flow?"), run:
+  `python -m graphify query "<question>"` first.
+- For the relationship between two specific components:
+  `python -m graphify path "<A>" "<B>"`
+- For a plain-language explanation of one component:
+  `python -m graphify explain "<name>"`
+- Read `graphify-out/GRAPH_REPORT.md` only for broad architecture review.
+- After modifying code, run `python -m graphify update .` to keep the graph
+  current (AST-only, no API cost, no key needed).
