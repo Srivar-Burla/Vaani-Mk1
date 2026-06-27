@@ -99,13 +99,11 @@ All entry points write timestamped diagnostic logs under `logs/`. The directory 
 
 ## Project documentation
 
-The project keeps product thinking, engineering history, and agent instructions separate so each document has a clear purpose:
+The project keeps product thinking and engineering history in separate documents:
 
 - [`README.md`](README.md) is the public introduction. It explains what Vaani does, how it works, and how to run it.
 - [`PRODUCT.md`](PRODUCT.md) contains the product context, the problem being solved, current Mk1 scope, roadmap, and capabilities being considered for later versions.
 - [`BUILDLOG.md`](BUILDLOG.md) is the chronological engineering record. It captures architecture decisions, tradeoffs, rejected approaches, debugging lessons, and why earlier decisions changed.
-- [`AGENTS.md`](AGENTS.md) defines the working agreement for AI coding agents contributing to this repository, including architecture boundaries and documentation rules.
-- [`Claude.md`](Claude.md) provides the same working agreement in the project-instruction filename used by Claude-based development tools.
 
 ## Project status
 
