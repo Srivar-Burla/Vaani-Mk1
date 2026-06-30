@@ -42,8 +42,11 @@ SILENCE_CHUNKS = 20
 EXIT_PHRASES = ["goodbye", "bye", "stop" , "that's all for now"]
 #EXIT_PHRASES = ["bye"]
 
-# Transaction intent is now decided by is_transaction_request() (an LLM classifier),
-# which replaced the old brittle TRANSACTION_TRIGGER_PHRASES substring list.
+# Transaction intent is decided inside the main Gemini call via function calling:
+# create_chat_session() declares a record_transaction function, and Gemini calls it
+# (instead of replying with text) when the user asks to log a transaction. This
+# replaced the separate is_transaction_request() classifier call, which itself had
+# replaced an even earlier substring-match phrase list (see BUILDLOG Entry 29).
 
 # Base URL for the personal finance tracker API (set in .env as FINANCE_API_URL)
 FINANCE_API_URL = os.getenv("FINANCE_API_URL")
@@ -306,10 +309,10 @@ Return a JSON object with exactly these keys:
 - amount: numeric amount as a float (e.g. 200.0), or null
 - category: one of Food, Travel, Fitness, Entertainment, Shopping, Utilities, Healthcare, Others
 - payment_medium: one of UPI, Cash, Credit Card, Wallet, Others
-- payment_source: specific source if mentioned (e.g. "SBI UPI", "HDFC Credit Card"), or null
+- payment_source: the specific account paid from, one of ICICI, Jupiter, Slice, Amazon Pay, Mobiquick, Splitwise Debt, or null
 - notes: any extra context worth keeping, or null
 
-Example: {{"name": "Zomato", "amount": 200.0, "category": "Food", "payment_medium": "UPI", "payment_source": null, "notes": null}}"""
+Example: {{"name": "Zomato", "amount": 200.0, "category": "Food", "payment_medium": "UPI", "payment_source": "ICICI", "notes": null}}"""
 
     response = llm_client.models.generate_content(
         model="gemini-3.1-flash-lite",
@@ -329,7 +332,7 @@ def extract_field_value(field_name, user_answer):
         "amount": f'Extract the numeric amount from: "{user_answer}". Return only the number as a float (e.g. 200.0), nothing else.',
         "category": f'Classify into one of: Food, Travel, Fitness, Entertainment, Shopping, Utilities, Healthcare, Others. Text: "{user_answer}". Return only the category word.',
         "payment_medium": f'Identify the payment method from: "{user_answer}". Return only one of: UPI, Cash, Credit Card, Wallet, Others.',
-        "payment_mode": f'Identify the Payment Mode from:"{user_answer}". Return only one of ICICI, Jupiter, Slice, Amazon Pay, Mobiquick, Splitwise Debt'
+        "payment_source": f'Identify the account paid from: "{user_answer}". Return only one of: ICICI, Jupiter, Slice, Amazon Pay, Mobiquick, Splitwise Debt.'
     }
     response = llm_client.models.generate_content(
         model="gemini-3.1-flash-lite",
@@ -355,13 +358,13 @@ def record_transaction(user_lang_code, ui_queue=None):
     # to listening rather than exiting the whole conversation.
     # ui_queue: passed through to vaani_output so the UI stays in sync with sub-states.
 
-    REQUIRED_FIELDS = ["name", "amount", "category", "payment_medium", "payment_mode"]
+    REQUIRED_FIELDS = ["name", "amount", "category", "payment_medium", "payment_source"]
     FIELD_QUESTIONS = {
         "name": "What's the merchant or transaction name?",
         "amount": "How much did you spend?",
         "category": "Which category should I file this under — Food, Travel, Fitness, Shopping, or something else?",
         "payment_medium": "How did you pay — UPI, cash, credit card, or wallet?",
-        "payment_mode": "Which Account did you pay from?"
+        "payment_source": "Which account did you pay from?"
     }
     YES_PHRASES = ["yes", "yeah", "sure", "okay", "ok", "correct", "right", "go ahead", "save", "do it"]
 
@@ -496,9 +499,8 @@ def record_transaction(user_lang_code, ui_queue=None):
                 "amount": float(fields["amount"]),
                 "category": fields["category"],
                 "payment_medium": fields["payment_medium"],
+                "payment_source": fields["payment_source"],
             }
-            if fields.get("payment_source"):
-                api_payload["payment_source"] = fields["payment_source"]
             if fields.get("notes"):
                 api_payload["notes"] = fields["notes"]
 

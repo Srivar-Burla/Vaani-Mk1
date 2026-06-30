@@ -3,6 +3,10 @@ logs/
 notes.txt
 __pycache__/
 
+# AI agent instruction files (internal dev tooling, not needed to run Vaani)
+AGENTS.md
+Claude.md
+
 # Claude Code session files (local to this machine)
 .claude/
 
