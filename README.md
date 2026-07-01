@@ -69,11 +69,12 @@ The Mk1 desktop and TWS integration currently target Windows.
 
    `FINANCE_API_URL` is required only for action flows that write to the finance-tracker backend.
 
-   **A billing-enabled Gemini key is recommended.** Vaani's live web grounding uses Gemini's Google Search tool, which works only on a billing-enabled key. Without one, you have three options:
+   **A billing-enabled Gemini key is recommended.** Vaani's live web grounding uses Gemini's Google Search tool, which works only on a billing-enabled key. Without one, you have two options:
 
    - Set the chat model in `create_chat_session()` (in `main.py`) to `gemini-2.5-flash`. It grounds on the free tier but is capped at about twenty requests per day, which is enough to try Vaani out. This is the simplest no-cost path.
    - Keep `gemini-3.1-flash-lite` but remove the Google Search tool from `create_chat_session()`. Vaani then runs uncapped on the free tier, answering from the model's own knowledge with no live web access.
-   - For live grounding without a paid Gemini key, integrate a separate search API with a more generous free tier, such as [Brave Search](https://brave.com/search/api/) (2,000 queries per month) or [Tavily](https://tavily.com/) (1,000 per month), and feed the results to a free-tier LLM. This is not built into Mk1.
+
+   For live grounding without a paid key, a future version will route through a separate search API instead of Gemini's built-in tool. See the free-tier accessibility direction for Mk2 in [`PRODUCT.md`](PRODUCT.md).
 
 4. Start Vaani:
 
