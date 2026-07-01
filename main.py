@@ -370,7 +370,11 @@ def record_transaction(user_lang_code, ui_queue=None):
         "payment_medium": "How did you pay — UPI, cash, credit card, or wallet?",
         "payment_source": "Which account did you pay from?"
     }
-    YES_PHRASES = ["yes", "yeah", "sure", "okay", "ok", "correct", "right", "go ahead", "save", "do it"]
+    YES_PHRASES = [
+        "yes", "yeah", "yep", "yup", "sure", "okay", "ok", "correct", "right",
+        "go ahead", "save", "do it", "confirmed", "confirm", "absolutely", "of course",
+        "please do", "go on", "sounds good", "make a note", "note it", "record it", "log it",
+    ]
 
     def push(msg):
         if ui_queue is not None:
@@ -460,9 +464,13 @@ def record_transaction(user_lang_code, ui_queue=None):
         amount_val = fields.get("amount")
         amount_str = str(int(amount_val)) if isinstance(amount_val, float) and amount_val == int(amount_val) else str(amount_val)
 
+        # Only include the account in the readback if extraction produced a real value.
+        # A None or string "None" here means extract_field_value got an unrecognised answer.
+        source_val = fields.get("payment_source")
+        source_part = f", from {source_val}" if source_val and source_val != "None" else ""
         readback = (
             f"I've got {amount_str} rupees at {fields['name']}, "
-            f"under {fields['category']}, paid via {fields['payment_medium']}, from {fields['payment_source']}. "
+            f"under {fields['category']}, paid via {fields['payment_medium']}{source_part}. "
             f"Shall I save this?"
         )
         vaani_output(readback, user_lang_code, ui_queue)
