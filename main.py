@@ -37,7 +37,7 @@ class Tee:
 SAMPLE_RATE = 16000
 #DURATION = 10
 CHUNK_DURATION = 0.1
-SILENCE_THRESHOLD = 0.005
+SILENCE_THRESHOLD = 0.01
 SILENCE_CHUNKS = 20
 EXIT_PHRASES = ["goodbye", "bye", "stop" , "that's all for now"]
 #EXIT_PHRASES = ["bye"]
@@ -77,7 +77,7 @@ If a question can be reasonably answered with an assumption, make the assumption
 
 If you do not know something or are not confident, say "I don't know" plainly. Do not guess or make things up. You have access to Google Search and can use it when a question requires live or current information. Use it when needed; don't call it for timeless questions.
 
-You cannot record, log, save, or store transactions, expenses, notes, reminders, or any other data yourself. A separate part of the system records transactions when the user asks. Never tell the user that you have logged, saved, recorded, added, or stored something. If the user mentions an expense or transaction in passing, do not claim to have recorded it. If they clearly want something recorded, that request is handled outside this conversation, so do not pretend to do it yourself.
+When the user expresses intent to log, record, or track a transaction or expense, call the record_transaction function immediately, even if they have not provided any details yet. Do not ask for amount, category, or any other details before calling it. The recording flow handles all of that. Call it silently, do not confirm the action in words or tell the user you have recorded anything. If the user merely mentions spending money in passing without asking to record it, do not call the function.
 
 Numbers, dates, and currency should be spoken naturally. Say "three thirty in the afternoon" not "15:30". Say "twenty five thousand rupees" not "Rs. 25,000". Do not use "-" in your responses. """
 
@@ -87,6 +87,14 @@ sarvam = SarvamAI(api_subscription_key=os.getenv("SARVAM_API_KEY"))
 # llm_client: currently Gemini. Kept generic so swapping providers later
 # (Claude, open source models) doesn't require renaming this throughout the file.
 llm_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+# Stub passed as a Python callable so the genai SDK treats it as AFC-compatible.
+# Gemini calls this instead of replying when the user wants to log a transaction.
+# AFC auto-execution is disabled in the session config so the main loop can catch
+# the function_call signal via response.function_calls and hand off to the guided flow.
+def record_transaction_stub():
+    """Record, log, save, or track a financial transaction or expense. Call this as soon as the user expresses intent to log a transaction, even if no details have been provided yet. Do not ask for amount, category, or any other details — the recording flow will collect them. Call this only for explicit recording requests, not when the user merely mentions spending money in passing."""
+    pass
+
 # Factory used by both terminal (main.py __main__) and GUI (ui.py) to create
 # a fresh session per conversation run.
 def create_chat_session():
@@ -108,24 +116,14 @@ def create_chat_session():
             tools=[
                 # google_search: Gemini decides per turn whether to search the live web.
                 types.Tool(google_search=types.GoogleSearch()),
-                # record_transaction: Gemini calls this instead of replying when the user
-                # explicitly wants to log an expense. This replaces the separate
-                # is_transaction_request() classifier call, saving ~2.5s per turn.
-                types.Tool(function_declarations=[
-                    types.FunctionDeclaration(
-                        name="record_transaction",
-                        description=(
-                            "Record, log, save, or track a financial transaction or expense. "
-                            "Call this only when the user explicitly requests to record a "
-                            "transaction right now — not when they merely mention spending money."
-                        ),
-                        parameters=types.Schema(type=types.Type.OBJECT, properties={})
-                    )
-                ])
+                # record_transaction_stub: passed as a Python callable (not FunctionDeclaration)
+                # so AFC treats it as invokable and the SDK does not suppress function calls.
+                # AFC auto-execution is disabled below so our loop catches the signal manually.
+                record_transaction_stub,
             ],
-            # Required when mixing a built-in server-side tool (GoogleSearch) with a
-            # FunctionDeclaration in the same session. Without this flag the API returns
-            # a 400 INVALID_ARGUMENT on every turn.
+            # disable=True stops AFC from auto-executing the stub before our loop sees it.
+            # include_server_side_tool_invocations lets GoogleSearch and the callable coexist.
+            automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
             tool_config=types.ToolConfig(
                 include_server_side_tool_invocations=True
             )
@@ -147,11 +145,17 @@ def record_until_silence():
     has_spoken = False
     silence_counter = 0
     collection = []
+    # Sarvam STT rejects audio longer than 30 seconds. Without this cap, background
+    # noise that never clears SILENCE_CHUNKS can hold the loop open indefinitely.
+    max_chunks = int(30 / CHUNK_DURATION)
 
     with sd.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype='float32') as stream:
         while silence_counter <= SILENCE_CHUNKS:
             chunk, _ = stream.read(int(CHUNK_DURATION * SAMPLE_RATE))
             collection.append(chunk)
+
+            if len(collection) >= max_chunks:
+                break
 
             volume = np.abs(chunk).mean()
 
@@ -458,7 +462,7 @@ def record_transaction(user_lang_code, ui_queue=None):
 
         readback = (
             f"I've got {amount_str} rupees at {fields['name']}, "
-            f"under {fields['category']}, paid by {fields['payment_medium']}. "
+            f"under {fields['category']}, paid via {fields['payment_medium']}, from {fields['payment_source']}. "
             f"Shall I save this?"
         )
         vaani_output(readback, user_lang_code, ui_queue)
